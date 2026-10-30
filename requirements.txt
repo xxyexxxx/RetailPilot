@@ -1,0 +1,12 @@
+fastapi>=0.141,<1
+uvicorn[standard]>=0.52,<1
+langgraph>=1.2,<2
+langchain-core>=1.2,<2
+langchain-openai>=1.4,<2
+langchain-deepseek>=1.1,<2
+python-dotenv>=1.2,<2
+jieba>=0.42,<1
+numpy>=2.3,<3
+requests>=2.32,<3
+pydantic>=2.12,<3
+pytest>=9,<10
