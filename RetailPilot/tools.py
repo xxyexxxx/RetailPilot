@@ -4,14 +4,13 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, fields
 from datetime import date
-from queue import Empty, Queue
-from threading import Thread
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from .catalog import get_product
 from .config import settings
+from .execution import tool_pool
 from .database import db_session
 from .policy import PolicyTopic, retrieve_policies
 from .retrieval import search_engine
@@ -233,32 +232,24 @@ class ToolRegistry:
         }
 
     @staticmethod
-    def _invoke(spec: ToolSpec, arguments: dict[str, Any], timeout_ms: int | None = None) -> tuple[Any, Any]:
+    def _invoke(
+        spec: ToolSpec, arguments: dict[str, Any], timeout_ms: int | None = None
+    ) -> tuple[Any, Any]:
         """Run one tool attempt without blocking the caller past its deadline."""
 
-        result: Queue[tuple[bool, Any]] = Queue(maxsize=1)
+        def call():
+            data = spec.function(**arguments)
+            observation = spec.output_compressor(data) if spec.output_compressor else data
+            return data, observation
 
-        def call() -> None:
-            try:
-                data = spec.function(**arguments)
-                observation = (
-                    spec.output_compressor(data) if spec.output_compressor else data
-                )
-                result.put((True, (data, observation)))
-            except Exception as exc:
-                result.put((False, exc))
-
-        worker = Thread(target=call, name=f"tool-{spec.name}", daemon=True)
-        worker.start()
         try:
-            succeeded, payload = result.get(timeout=(spec.timeout_ms if timeout_ms is None else timeout_ms) / 1000)
-        except Empty as exc:
-            raise _ToolTimeoutError(
-                f"{spec.name} exceeded timeout of {spec.timeout_ms} ms"
-            ) from exc
-        if succeeded:
-            return payload
-        raise payload
+            return tool_pool.call(
+                call,
+                time.perf_counter()
+                + (spec.timeout_ms if timeout_ms is None else timeout_ms) / 1000,
+            )
+        except TimeoutError as exc:
+            raise _ToolTimeoutError(f"{spec.name} deadline exhausted") from exc
 
 
 class _ToolTimeoutError(TimeoutError):

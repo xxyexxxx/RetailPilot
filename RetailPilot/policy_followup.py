@@ -6,13 +6,11 @@ import json
 import re
 import time
 from collections.abc import Callable
-from contextvars import copy_context
 from functools import partial
-from queue import Empty, Queue
-from threading import Thread
 from typing import Any
 
 from .config import settings
+from .execution import policy_pool
 from .llm_config import PolicyCallBudget, policy_call_budget
 from .policy_evidence import refusal, validate_assessment
 
@@ -27,26 +25,7 @@ FOLLOWUP_TOPICS: dict[str, frozenset[str]] = {
 
 
 def _bounded_call(call: Callable[[], Any], deadline: float) -> Any:
-    remaining = deadline - time.perf_counter()
-    if remaining <= 0:
-        raise TimeoutError("policy deadline")
-    result: Queue[tuple[bool, Any]] = Queue(maxsize=1)
-    context = copy_context()
-
-    def run() -> None:
-        try:
-            result.put((True, context.run(call)))
-        except Exception as exc:  # noqa: BLE001 - fail-closed external call boundary
-            result.put((False, exc))
-
-    Thread(target=run, daemon=True, name="policy-followup").start()
-    try:
-        ok, value = result.get(timeout=remaining)
-    except Empty as exc:
-        raise TimeoutError("policy deadline") from exc
-    if not ok:
-        raise value
-    return value
+    return policy_pool.call(call, deadline)
 
 
 def _identity(document: dict[str, Any]) -> tuple[str, ...]:

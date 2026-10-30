@@ -55,6 +55,10 @@ class Settings:
     intent_mode: str
     api_key: str
     allow_open_api: bool
+    api_user_id: str
+    auth_users_json: str
+    auth_cookie_secure: bool
+    auth_session_seconds: int
 
 
 _HAS_LLM_CREDENTIALS = bool(os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY"))
@@ -169,6 +173,13 @@ settings = Settings(
     api_key=_env("RETAILPILOT_API_KEY", "").strip(),
     allow_open_api=_env("RETAILPILOT_ALLOW_OPEN_API", "").strip().lower()
     in {"1", "true", "yes", "on"},
+    api_user_id=_env("RETAILPILOT_API_USER_ID", "service-user"),
+    auth_users_json=_env("RETAILPILOT_AUTH_USERS_JSON", ""),
+    auth_cookie_secure=_env("RETAILPILOT_AUTH_COOKIE_SECURE", "true").lower()
+    in {"1", "true", "yes", "on"},
+    auth_session_seconds=max(
+        60, min(86400, int(_env("RETAILPILOT_AUTH_SESSION_SECONDS", "3600")))
+    ),
 )
 
 

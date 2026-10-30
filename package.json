@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/frontend/*.test.js", "check": "node --check web/assets/app.js && node --check web/assets/client.js && node --check web/assets/session.js" }
+}

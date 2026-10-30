@@ -255,3 +255,12 @@ Copy-Item config\github-workflows\low-risk-automerge.yml.example .github\workflo
 ```
 
 然后提交推送，并把 `quality-gate / test`、`quality-gate / policy` 配为 Required Checks。
+
+
+## 受保护网页与多用户部署
+
+本地 Demo 的 `RETAILPILOT_ALLOW_OPEN_API=true` 仅适用于单用户本机体验。公网部署保持 false，
+运行 `python scripts/create_web_user.py --user alice` 生成服务端密码哈希 JSON，配置
+`RETAILPILOT_AUTH_USERS_JSON`，并启用 HTTPS 与 Secure Cookie。浏览器登录后使用 HttpOnly
+会话 Cookie 和 CSRF Token，无需把长期 API Key 写入前端。完整说明见
+[契约与会话升级](docs/contracts-and-sessions.md)。
