@@ -1,0 +1,26 @@
+{
+  "policy_version": "quality-gates-v1",
+  "required": {
+    "tests_pass": true,
+    "reproduction_pass": true,
+    "cluster_pass_rate": 0.95,
+    "holdout_pass_rate_delta_min": 0.0,
+    "ndcg_at_10_delta_min": -0.005,
+    "hard_constraint_pass_rate_delta_min": 0.0,
+    "p95_latency_relative_delta_max": 0.1,
+    "judge_error_rate_max": 0.01
+  },
+  "merge_policy": {
+    "low": "auto_merge_after_required_checks",
+    "medium": "one_human_review",
+    "high": "mandatory_human_review",
+    "judge_and_system_same_pr": "forbidden"
+  },
+  "policy_required": {
+    "structural_grounding_pass_rate_min": 1.0,
+    "hard_filter_violation_rate_max": 0.0,
+    "duplicate_followup_calls_max": 0,
+    "independent_semantic_judge_required": true,
+    "answer_correctness_faithfulness_judge_min": 0.95
+  }
+}

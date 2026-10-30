@@ -1,0 +1,30 @@
+{
+  "name": "customserviceagent-after-sales",
+  "repository": "Kabuda/CustomServiceAgent",
+  "base_url": "https://raw.githubusercontent.com/Kabuda/CustomServiceAgent/main/",
+  "platform": "customserviceagent-demo",
+  "authority": "community-demo",
+  "license_note": "Upstream repository has no explicit license; use for local research/demo only.",
+  "documents": [
+    {"path": "app/data/knowledge/01_us_refund_return_policy.md", "topic": "退换货", "jurisdiction": "US"},
+    {"path": "app/data/knowledge/02_eu_consumer_return_policy.md", "topic": "退换货", "jurisdiction": "EU"},
+    {"path": "app/data/knowledge/03_uk_au_ca_return_policy.md", "topic": "退换货", "jurisdiction": "UK,AU,CA"},
+    {"path": "app/data/knowledge/04_japan_korea_after_sales_policy.md", "topic": "退换货", "jurisdiction": "JP,KR"},
+    {"path": "app/data/knowledge/05_logistics_delay_policy.md", "topic": "配送", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/06_package_lost_damage_policy.md", "topic": "配送", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/07_customs_clearance_policy.md", "topic": "配送", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/08_electronics_quality_policy.md", "topic": "保修", "jurisdiction": "*", "category_scope": "Electronics"},
+    {"path": "app/data/knowledge/09_apparel_size_return_policy.md", "topic": "退换货", "jurisdiction": "*", "category_scope": "Apparel"},
+    {"path": "app/data/knowledge/10_beauty_hygiene_policy.md", "topic": "退换货", "jurisdiction": "*", "category_scope": "All Beauty"},
+    {"path": "app/data/knowledge/11_customized_goods_policy.md", "topic": "退换货", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/12_payment_refund_timeline_policy.md", "topic": "退款", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/13_payment_dispute_chargeback_policy.md", "topic": "退款", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/14_ticket_priority_sla_policy.md", "topic": "内部流程", "jurisdiction": "*", "audience": "internal"},
+    {"path": "app/data/knowledge/15_human_review_sop.md", "topic": "内部流程", "jurisdiction": "*", "audience": "internal"},
+    {"path": "app/data/knowledge/16_customer_reply_templates.md", "topic": "内部流程", "jurisdiction": "*", "audience": "internal"},
+    {"path": "app/data/knowledge/17_evidence_collection_policy.md", "topic": "内部流程", "jurisdiction": "*", "audience": "internal"},
+    {"path": "app/data/knowledge/18_warehouse_return_inspection_policy.md", "topic": "退换货", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/19_promotion_coupon_compensation_policy.md", "topic": "退款", "jurisdiction": "*"},
+    {"path": "app/data/knowledge/20_vip_social_complaint_policy.md", "topic": "内部流程", "jurisdiction": "*", "audience": "internal"}
+  ]
+}

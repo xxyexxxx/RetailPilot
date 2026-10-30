@@ -1,0 +1,2 @@
+{"conversation_id":"example-presales-followup","source":"repository-example","turns":[{"role":"user","content":"推荐一款办公键盘，预算三百以内"},{"role":"assistant","content":"这条人工回复只作参考，不会注入 Agent。"},{"role":"user","content":"再静音一点，最好无线"}]}
+{"conversation_id":"example-order-followup","source":"repository-example","turns":[{"role":"user","content":"帮我查订单 JD20260801"},{"role":"assistant","content":"人工客服参考回复。"},{"role":"user","content":"买的什么"},{"role":"user","content":"查看完整物流"}]}
