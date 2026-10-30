@@ -6,9 +6,18 @@
   <title>RetailPilot</title>
   <link rel="stylesheet" href="/assets/styles.css">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script src="/assets/app.js?v=20261030" defer></script>
+  <script type="module" src="/assets/app.js?v=20261030-contracts"></script>
 </head>
 <body>
+  <section id="auth-panel" hidden class="auth-panel">
+    <form id="login-form" class="auth-form">
+      <h2>登录 RetailPilot</h2><p>使用部署者配置的网页账号。浏览器通过安全会话 Cookie 访问 API。</p>
+      <label>账号<input id="login-user" autocomplete="username" required maxlength="80"></label>
+      <label>密码<input id="login-password" type="password" autocomplete="current-password" required maxlength="256"></label>
+      <button id="login-submit" type="submit">登录</button>
+    </form>
+  </section>
+  <button id="logout" hidden class="logout-button">退出登录</button>
   <header class="app-bar">
     <div class="brand-block">
       <div class="brand-mark" aria-hidden="true">RP</div>
@@ -85,9 +94,11 @@
               <button data-prompt="敏感肌用的保湿护肤品，预算 30 美元">敏感肌护肤</button>
               <button data-prompt="帮我查一下订单 JD20260801 到哪了">查询订单</button>
             </div>
+            <div id="chat-progress" role="status" aria-live="polite"></div>
+            <div class="conversation-controls"><button id="restore-history" type="button">恢复会话</button><button id="load-history" type="button" hidden>加载更早消息</button><button id="chat-cancel" type="button" hidden>取消等待</button></div>
             <form class="composer" id="chat-form">
               <textarea id="chat-input" rows="1" placeholder="输入购物需求或售后问题" required></textarea>
-              <button class="send-button" type="submit" title="发送" aria-label="发送">
+              <button id="chat-send" class="send-button" type="submit" title="发送" aria-label="发送">
                 <i data-lucide="arrow-up"></i>
               </button>
             </form>
@@ -139,6 +150,8 @@
           </button>
         </form>
 
+        <div class="search-options"><label>查询模式<select id="search-query-mode"><option value="auto">自动解析</option><option value="manual">手动实验</option></select></label>
+        <span id="manual-search-fields" hidden><input id="search-terms" placeholder="检索词，逗号分隔" aria-label="手动检索词"><input id="search-concepts" placeholder="属性词，逗号分隔" aria-label="手动属性词"></span></div>
         <div class="search-summary" id="search-summary"></div>
         <div class="search-workspace">
           <section>

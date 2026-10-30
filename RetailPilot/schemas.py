@@ -121,8 +121,9 @@ class SearchRequest(BaseModel):
     mode: Literal["hybrid", "fts"] = "hybrid"
     # 手动调用等价于"人当 LLM 传参"：检索词由调用方给出（FTS 召回唯一来源），
     # query 仅作原文记录/向量召回，不再走本地词表解析。
-    target_terms: list[str] = Field(default_factory=list, max_length=12)
-    concepts: list[str] = Field(default_factory=list, max_length=12)
+    query_mode: Literal["auto", "manual"] = "auto"
+    target_terms: list[str] | None = Field(default=None, max_length=12)
+    concepts: list[str] | None = Field(default=None, max_length=12)
     category: str | None = None
     price_min: float | None = Field(default=None, ge=0)
     price_max: float | None = Field(default=None, ge=0)

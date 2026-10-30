@@ -32,6 +32,8 @@ except ImportError:
 
 from langchain_openai import ChatOpenAI
 
+from .execution import call_deadline
+
 LOGGER = logging.getLogger(__name__)
 
 class PolicyBudgetExceeded(RuntimeError):
@@ -591,6 +593,10 @@ def get_model(
     budget = policy_call_budget.get()
     if budget is not None:
         timeout = max(0.01, min(timeout, budget.deadline - time.perf_counter()))
+        max_retries = 0
+    deadline = call_deadline.get()
+    if deadline is not None:
+        timeout = max(0.01, min(timeout, deadline - time.perf_counter()))
         max_retries = 0
     thinking = _env_bool("LLM_THINKING", False)
     if _HAS_DEEPSEEK and base_url and "deepseek" in base_url.lower():

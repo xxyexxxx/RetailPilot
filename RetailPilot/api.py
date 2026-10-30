@@ -1,16 +1,33 @@
 from __future__ import annotations
 
-import hmac
+import asyncio
+import hashlib
+import json
+import time
 from contextlib import asynccontextmanager
 from copy import deepcopy
+from queue import Empty, Queue
+from threading import Event
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
-from .agent import chat
+from . import auth
+from .agent import chat, graph
+from .api_models import (
+    ChatResponse,
+    CompareResponse,
+    LoginRequest,
+    ProductResponse,
+    SearchResponse,
+    TraceSummary,
+)
 from .catalog import (
+    SessionConflictError,
+    SessionOwnershipError,
     add_interaction,
     catalog_stats,
     compare_products,
@@ -18,9 +35,11 @@ from .catalog import (
     get_user_profile,
     list_brands,
     list_categories,
+    session_history,
 )
 from .config import settings
-from .database import catalog_ready, get_metadata, init_db
+from .database import catalog_ready, db_session, get_metadata, init_db
+from .execution import chat_pool
 from .llm import maybe_refine_query
 from .query import parse_query
 from .retrieval import search_engine
@@ -40,33 +59,8 @@ async def lifespan(_: FastAPI):
     yield
 
 
-def _api_access(request: Request) -> None:
-    """Require a configured API key for every /api endpoint by default.
-
-    Local single-user demos may set RETAILPILOT_ALLOW_OPEN_API=true, but the
-    safe clone default refuses anonymous access instead of silently serving
-    sessions, traces and user profiles.
-    """
-
-    if settings.allow_open_api:
-        return
-    expected = settings.api_key
-    if not expected:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "API access is disabled because RETAILPILOT_API_KEY is not set. "
-                "Set it and send `Authorization: Bearer <key>` (or "
-                "X-API-Key: <key>), or explicitly set "
-                "RETAILPILOT_ALLOW_OPEN_API=true for a local demo."
-            ),
-        )
-    supplied = request.headers.get("x-api-key") or ""
-    authorization = request.headers.get("authorization") or ""
-    if authorization.lower().startswith("bearer "):
-        supplied = authorization[7:].strip()
-    if not supplied or not hmac.compare_digest(supplied, expected):
-        raise HTTPException(status_code=401, detail="invalid or missing API key")
+def _api_access(request: Request):
+    return auth.authenticate(request)
 
 
 def _summarize_trace(trace: Any) -> Any:
@@ -76,10 +70,71 @@ def _summarize_trace(trace: Any) -> Any:
     for item in trace:
         if not isinstance(item, dict):
             continue
-        entry: dict[str, Any] = {}
-        for key in ("node", "tool", "ok", "error_type", "task_index", "tasks"):
-            if key in item:
-                entry[key] = item[key]
+        entry = {"node": str(item.get("node") or "unknown")[:120]}
+        for key in ("tool", "status"):
+            if isinstance(item.get(key), str) and (
+                key == "tool"
+                or item[key]
+                in {
+                    "success",
+                    "error",
+                    "passed",
+                    "refused",
+                    "repaired",
+                    "skipped",
+                    "started",
+                    "completed",
+                    "rebuilt_and_grounded",
+                }
+            ):
+                entry[key] = item[key][:80]
+        if isinstance(item.get("ok"), bool):
+            entry["ok"] = item["ok"]
+        for key in ("latency_ms", "task_index", "hop"):
+            value = item.get(key)
+            if isinstance(value, (int, float)) and 0 <= value < 1e12:
+                entry[key] = value
+        if item.get("next_action") in {"answer", "retrieve_more", "ask_user", "refuse"}:
+            entry["next_action"] = item["next_action"]
+        if "status" not in entry:
+            entry["status"] = (
+                "passed"
+                if item.get("passed") is True
+                else "error"
+                if item.get("passed") is False
+                else "completed"
+            )
+        entry["counts"] = {
+            key: item[key]
+            for key in (
+                "tasks",
+                "returned",
+                "new_chunk_count",
+                "new_information_count",
+                "cumulative_evidence_count",
+                "evidence_count",
+                "assessment_calls",
+                "extra_retrieval_calls",
+            )
+            if isinstance(item.get(key), int)
+        }
+        entry["timings_ms"] = {
+            key: value
+            for key, value in (item.get("timings_ms") or {}).items()
+            if key
+            in {
+                "structured_filter",
+                "fts_recall",
+                "dense_recall",
+                "candidate_payload_fetch",
+                "candidate_features",
+                "rank_and_ground",
+                "rerank",
+            }
+            and isinstance(value, (int, float))
+            and 0 <= value < 1e12
+        }
+        entry = TraceSummary.model_validate(entry).model_dump(exclude_none=True)
         summary.append(entry)
     return summary
 
@@ -121,11 +176,191 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def private_api_cache(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.get("/api/auth/session")
+def auth_session(request: Request):
+    try:
+        principal = auth.authenticate(request)
+        return {
+            "mode": principal.mode,
+            "user_id": principal.user_id,
+            "csrf_token": principal.csrf_token,
+        }
+    except HTTPException as exc:
+        if exc.status_code in {401, 503}:
+            return {"mode": "login_required", "user_id": None, "csrf_token": ""}
+        raise
+
+
+@app.post("/api/auth/login")
+def auth_login(body: LoginRequest, request: Request, response: Response):
+    token, principal = auth.login(request, body.user_id, body.password)
+    response.set_cookie(
+        auth.COOKIE,
+        token,
+        max_age=settings.auth_session_seconds,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="strict",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "mode": "cookie",
+        "user_id": principal.user_id,
+        "csrf_token": principal.csrf_token,
+    }
+
+
+@app.post("/api/auth/logout", dependencies=[Depends(_api_access)])
+def auth_logout(request: Request, response: Response):
+    token = request.cookies.get(auth.COOKIE, "")
+    with db_session() as connection:
+        connection.execute(
+            "DELETE FROM web_sessions WHERE token_hash=?",
+            (hashlib.sha256(token.encode()).hexdigest(),),
+        )
+    response.delete_cookie(
+        auth.COOKIE,
+        secure=settings.auth_cookie_secure,
+        httponly=True,
+        samesite="strict",
+    )
+    return {"ok": True}
+
+
+@app.get("/api/sessions/{session_id}/messages", dependencies=[Depends(_api_access)])
+def history(
+    session_id: str,
+    http: Request,
+    user_id: str | None = None,
+    before_id: int | None = None,
+):
+    try:
+        return session_history(
+            session_id, auth.request_user(http, user_id), before_id=before_id
+        )
+    except SessionOwnershipError as exc:
+        raise HTTPException(403, "session is not available to this user") from exc
+
+
+@app.post("/api/chat/stream", dependencies=[Depends(_api_access)])
+async def chat_stream(body: ChatRequest, request: Request):
+    user_id = auth.request_user(
+        request, body.user_id if "user_id" in body.model_fields_set else None
+    )
+    # Check ownership before SSE headers. CAS still protects concurrent turns.
+    try:
+        await run_in_threadpool(session_history, body.session_id, user_id)
+    except SessionOwnershipError as exc:
+        raise HTTPException(403, "session is not available to this user") from exc
+    events = Queue(maxsize=64)
+    cancelled = Event()
+
+    def produce():
+        started = time.perf_counter()
+        try:
+            for update in graph.stream(
+                {
+                    "session_id": body.session_id,
+                    "user_id": user_id,
+                    "message": body.message,
+                    "branch_outputs": [],
+                    "trace": [],
+                },
+                stream_mode="updates",
+            ):
+                if cancelled.is_set():
+                    break
+                for node, value in update.items():
+                    if node == "persist":
+                        payload = ChatResponse.model_validate(
+                            _redact_public_payload(value["final"])
+                        ).model_dump(exclude_none=True)
+                        events.put_nowait(("final", payload))
+                    else:
+                        events.put_nowait(
+                            (
+                                "progress",
+                                {
+                                    "node": node,
+                                    "status": "completed",
+                                    "latency_ms": round(
+                                        (time.perf_counter() - started) * 1000, 2
+                                    ),
+                                },
+                            )
+                        )
+        except SessionConflictError:
+            events.put_nowait(
+                ("error", {"detail": "session changed; reload history", "status": 409})
+            )
+        except Exception:
+            if not cancelled.is_set():
+                events.put_nowait(
+                    ("error", {"detail": "chat execution failed", "status": 500})
+                )
+        finally:
+            if not cancelled.is_set():
+                events.put_nowait(("done", {}))
+
+    try:
+        stream_deadline = time.perf_counter() + 300
+        future = chat_pool.submit(produce, deadline=stream_deadline)
+    except RuntimeError as exc:
+        raise HTTPException(503, "chat capacity exhausted; try later") from exc
+
+    async def stream():
+        last_heartbeat = time.perf_counter()
+        try:
+            while True:
+                if time.perf_counter() >= stream_deadline:
+                    yield 'event: error\ndata: {"detail":"chat deadline exceeded; restore history before retrying","status":408}\n\n'
+                    break
+                if await request.is_disconnected():
+                    break
+                try:
+                    kind, payload = events.get_nowait()
+                except Empty:
+                    if future.done():
+                        yield 'event: error\ndata: {"detail":"chat execution stopped","status":503}\n\n'
+                        break
+                    if time.perf_counter() - last_heartbeat >= 10:
+                        yield ": keep-alive\n\n"
+                        last_heartbeat = time.perf_counter()
+                    await asyncio.sleep(0.05)
+                    continue
+                if kind == "done":
+                    break
+                yield (
+                    "event: "
+                    + kind
+                    + "\ndata: "
+                    + json.dumps(payload, ensure_ascii=False)
+                    + "\n\n"
+                )
+        finally:
+            cancelled.set()
+            future.cancel()
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/api/health", dependencies=[Depends(_api_access)])
 def health() -> dict[str, Any]:
     return {
         "status": "ok" if catalog_ready() else "uninitialized",
-        "database": str(settings.database_path),
         "stats": catalog_stats(),
     }
 
@@ -140,19 +375,35 @@ def catalog() -> dict[str, Any]:
     }
 
 
-@app.post("/api/search", dependencies=[Depends(_api_access)])
-def search(request: SearchRequest) -> dict[str, Any]:
+@app.post(
+    "/api/search",
+    response_model=SearchResponse,
+    response_model_exclude_none=True,
+    dependencies=[Depends(_api_access)],
+)
+def search(request: SearchRequest, http: Request) -> dict[str, Any]:
     # 手动调用等价于"人当 LLM 传参"：target_terms/concepts 由调用方给出，
     # 是 FTS 召回唯一来源；query 仅作原文记录与向量召回。无 LLM 词时不做
     # 本地词表兜底（与 agent 链路一致：LLM 失效不往后走）。
+    user_id = auth.request_user(
+        http, request.user_id if "user_id" in request.model_fields_set else None
+    )
+    manual = request.query_mode == "manual" or (
+        "query_mode" not in request.model_fields_set
+        and (request.target_terms is not None or request.concepts is not None)
+    )
     parsed = parse_query(request.query, known_brands=list_brands())
-    parsed = maybe_refine_query(parsed)
-    parsed.grounded_target_terms = [t for t in request.target_terms if t][:12]
-    parsed.llm_concepts = [c for c in request.concepts if c][:12]
-    if parsed.grounded_target_terms:
-        parsed.sources["grounded_target_terms"] = "api:params"
-    if parsed.llm_concepts:
-        parsed.sources["concepts"] = "api:params"
+    if manual:
+        parsed.grounded_target_terms = [
+            term.strip() for term in request.target_terms or [] if term.strip()
+        ][:12]
+        parsed.llm_concepts = [
+            term.strip() for term in request.concepts or [] if term.strip()
+        ][:12]
+        parsed.sources["query_mode"] = "api:manual"
+    else:
+        parsed = maybe_refine_query(parsed)
+        parsed.sources["query_mode"] = "api:auto"
     if request.category:
         parsed.category = request.category
         parsed.sources["category"] = "api:filter"
@@ -168,7 +419,7 @@ def search(request: SearchRequest) -> dict[str, Any]:
     return _redact_public_payload(
         search_engine.search(
             parsed,
-            user_id=request.user_id,
+            user_id=user_id,
             limit=request.limit,
             mode=request.mode,
             session_id="search-lab",
@@ -176,14 +427,33 @@ def search(request: SearchRequest) -> dict[str, Any]:
     )
 
 
-@app.post("/api/chat", dependencies=[Depends(_api_access)])
-def chat_endpoint(request: ChatRequest) -> dict[str, Any]:
-    return _redact_public_payload(
-        chat(request.session_id, request.message, request.user_id)
+@app.post(
+    "/api/chat",
+    response_model=ChatResponse,
+    response_model_exclude_none=True,
+    dependencies=[Depends(_api_access)],
+)
+def chat_endpoint(request: ChatRequest, http: Request) -> dict[str, Any]:
+    user_id = auth.request_user(
+        http, request.user_id if "user_id" in request.model_fields_set else None
     )
+    try:
+        return _redact_public_payload(
+            chat(request.session_id, request.message, user_id)
+        )
+    except SessionOwnershipError as exc:
+        raise HTTPException(403, "session is not available to this user") from exc
+    except SessionConflictError as exc:
+        raise HTTPException(
+            409, "session changed; reload history before retrying"
+        ) from exc
 
 
-@app.get("/api/products/{sku}", dependencies=[Depends(_api_access)])
+@app.get(
+    "/api/products/{sku}",
+    response_model=ProductResponse,
+    dependencies=[Depends(_api_access)],
+)
 def product_detail(sku: str) -> dict[str, Any]:
     product = get_product(sku)
     if product is None:
@@ -191,19 +461,27 @@ def product_detail(sku: str) -> dict[str, Any]:
     return product
 
 
-@app.post("/api/products/compare", dependencies=[Depends(_api_access)])
+@app.post(
+    "/api/products/compare",
+    response_model=CompareResponse,
+    dependencies=[Depends(_api_access)],
+)
 def product_compare(request: CompareRequest) -> dict[str, Any]:
     result = compare_products(request.skus)
     if len(result["products"]) < 2:
-        raise HTTPException(status_code=400, detail="at least two valid products are required")
+        raise HTTPException(
+            status_code=400, detail="at least two valid products are required"
+        )
     return result
 
 
 @app.post("/api/interactions", dependencies=[Depends(_api_access)])
-def interactions(request: InteractionRequest) -> dict[str, Any]:
+def interactions(request: InteractionRequest, http: Request) -> dict[str, Any]:
     try:
         return add_interaction(
-            request.user_id,
+            auth.request_user(
+                http, request.user_id if "user_id" in request.model_fields_set else None
+            ),
             request.sku,
             request.event_type,
             request.query,
@@ -213,8 +491,8 @@ def interactions(request: InteractionRequest) -> dict[str, Any]:
 
 
 @app.get("/api/profile/{user_id}", dependencies=[Depends(_api_access)])
-def profile(user_id: str) -> dict[str, Any]:
-    return get_user_profile(user_id)
+def profile(user_id: str, http: Request) -> dict[str, Any]:
+    return get_user_profile(auth.request_user(http, user_id))
 
 
 @app.get("/")

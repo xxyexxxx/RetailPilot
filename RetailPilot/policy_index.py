@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import threading
-import os
 import atexit
+import math
+import os
+import threading
+import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -11,6 +13,7 @@ from typing import Any, Iterable
 import numpy as np
 
 from .config import settings
+from .execution import call_deadline
 
 
 def resolve_local_model_reference(model_name: str) -> str:
@@ -169,7 +172,12 @@ class QdrantPolicyIndex:
                 convert_to_numpy=True,
                 show_progress_bar=False,
             )[0].astype(np.float32, copy=False)
+            deadline = call_deadline.get()
+            remaining = deadline - time.perf_counter() if deadline is not None else 10
+            if remaining <= 0:
+                raise TimeoutError("policy dense deadline exhausted")
             result = client.query_points(
+                timeout=max(1, min(10, math.ceil(remaining))),
                 collection_name=settings.policy_qdrant_collection,
                 query=vector.tolist(),
                 query_filter=self._filter(

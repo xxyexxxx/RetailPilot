@@ -5,7 +5,6 @@ from typing import Any, Iterable
 
 from .database import db_session, init_db, json_dumps, json_loads, row_to_dict, utc_now
 
-
 EVENT_WEIGHTS = {
     "impression": 0.05,
     "click": 0.4,
@@ -292,38 +291,39 @@ def interaction_scores(user_id: str, candidate_skus: list[str]) -> dict[str, flo
     return {row["sku"]: math.tanh(float(row["score"]) / 3) for row in rows}
 
 
+class SessionOwnershipError(PermissionError):
+    pass
+
+
+class SessionConflictError(RuntimeError):
+    pass
+
+
 def get_session(session_id: str, user_id: str) -> dict[str, Any]:
     ensure_user(user_id)
     with db_session() as connection:
         connection.execute(
-            """
-            INSERT INTO sessions(session_id, user_id, context_json, pending_json)
-            VALUES(?, ?, '{}', '{}')
-            ON CONFLICT(session_id) DO NOTHING
-            """,
+            "INSERT INTO sessions(session_id,user_id,context_json,pending_json) VALUES(?,?,'{}','{}') ON CONFLICT DO NOTHING",
             (session_id, user_id),
         )
         row = connection.execute(
-            """
-            SELECT session_id, user_id, context_json, pending_json, updated_at
-            FROM sessions WHERE session_id = ?
-            """,
-            (session_id,),
+            "SELECT * FROM sessions WHERE session_id=?", (session_id,)
         ).fetchone()
+        if row["user_id"] != user_id:
+            raise SessionOwnershipError("session belongs to another user")
+        context = json_loads(row["context_json"], {})
+        through = int(context.get("history_summary_through_id") or 0)
         messages = connection.execute(
-            """
-            SELECT id, role, content, payload_json, created_at
-            FROM messages
-            WHERE session_id = ?
-            ORDER BY id ASC
-            """,
-            (session_id,),
+            "SELECT id,role,content,payload_json,created_at FROM messages WHERE session_id=? AND id>? ORDER BY id",
+            (session_id, through),
         ).fetchall()
     return {
         "session_id": session_id,
-        "user_id": row["user_id"] if row else user_id,
-        "context": json_loads(row["context_json"] if row else "{}", {}),
-        "pending": json_loads(row["pending_json"] if row else "{}", {}),
+        "user_id": user_id,
+        "version": row["version"],
+        "updated_at": row["updated_at"],
+        "context": context,
+        "pending": json_loads(row["pending_json"], {}),
         "messages": [
             {
                 "id": item["id"],
@@ -337,25 +337,34 @@ def get_session(session_id: str, user_id: str) -> dict[str, Any]:
     }
 
 
-def save_session(
-    session_id: str,
-    user_id: str,
-    context: dict[str, Any],
-    pending: dict[str, Any] | None = None,
-) -> None:
-    ensure_user(user_id)
-    with db_session() as connection:
+def _write_session(
+    connection, session_id, user_id, context, pending, expected_version=None
+):
+    row = connection.execute(
+        "SELECT user_id,version FROM sessions WHERE session_id=?", (session_id,)
+    ).fetchone()
+    if row and row["user_id"] != user_id:
+        raise SessionOwnershipError("session belongs to another user")
+    if row and expected_version is not None and row["version"] != expected_version:
+        raise SessionConflictError("session changed; reload history before retrying")
+    if row:
+        cursor = connection.execute(
+            "UPDATE sessions SET context_json=?,pending_json=?,version=version+1,updated_at=? WHERE session_id=? AND version=?",
+            (
+                json_dumps(context),
+                json_dumps(pending or {}),
+                utc_now(),
+                session_id,
+                row["version"],
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise SessionConflictError("session changed")
+    else:
+        if expected_version not in (None, 0):
+            raise SessionConflictError("session missing")
         connection.execute(
-            """
-            INSERT INTO sessions(
-                session_id, user_id, context_json, pending_json, updated_at
-            ) VALUES(?, ?, ?, ?, ?)
-            ON CONFLICT(session_id) DO UPDATE SET
-                user_id=excluded.user_id,
-                context_json=excluded.context_json,
-                pending_json=excluded.pending_json,
-                updated_at=excluded.updated_at
-            """,
+            "INSERT INTO sessions(session_id,user_id,context_json,pending_json,updated_at,version) VALUES(?,?,?,?,?,1)",
             (
                 session_id,
                 user_id,
@@ -364,6 +373,75 @@ def save_session(
                 utc_now(),
             ),
         )
+
+
+def save_session(
+    session_id: str,
+    user_id: str,
+    context: dict[str, Any],
+    pending: dict[str, Any] | None = None,
+) -> None:
+    ensure_user(user_id)
+    with db_session() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        _write_session(connection, session_id, user_id, context, pending)
+
+
+def persist_turn(
+    session_id: str,
+    user_id: str,
+    message: str,
+    answer: str,
+    context: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    expected_version: int,
+    pending: dict[str, Any] | None = None,
+) -> None:
+    """CAS context + both messages commit together or roll back together."""
+    with db_session() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        _write_session(
+            connection, session_id, user_id, context, pending, expected_version
+        )
+        connection.executemany(
+            "INSERT INTO messages(session_id,role,content,payload_json) VALUES(?,?,?,?)",
+            [
+                (session_id, "user", message, "{}"),
+                (session_id, "assistant", answer, json_dumps(payload)),
+            ],
+        )
+
+
+def session_history(
+    session_id: str, user_id: str, *, limit: int = 100, before_id: int | None = None
+) -> dict[str, Any]:
+    """Owner-checked paginated transcript, independent of the model summary."""
+    with db_session() as connection:
+        row = connection.execute(
+            "SELECT user_id,version FROM sessions WHERE session_id=?", (session_id,)
+        ).fetchone()
+        if not row:
+            return {
+                "session_id": session_id,
+                "version": 0,
+                "messages": [],
+                "next_before_id": None,
+            }
+        if row["user_id"] != user_id:
+            raise SessionOwnershipError("session belongs to another user")
+        rows = connection.execute(
+            "SELECT id,role,content FROM messages WHERE session_id=? AND id<? ORDER BY id DESC LIMIT ?",
+            (session_id, before_id or 9223372036854775807, limit + 1),
+        ).fetchall()
+    has_more = len(rows) > limit
+    selected = list(reversed(rows[:limit]))
+    return {
+        "session_id": session_id,
+        "version": row["version"],
+        "messages": [dict(item) for item in selected],
+        "next_before_id": selected[0]["id"] if has_more else None,
+    }
 
 
 def add_message(

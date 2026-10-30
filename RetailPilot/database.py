@@ -9,7 +9,6 @@ from typing import Any, Iterator
 
 from .config import ensure_directories, settings
 
-
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -401,14 +400,29 @@ def utc_now() -> str:
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
+    import time
+
+    from .execution import call_deadline
+
     ensure_directories()
-    target = str(path or settings.database_path)
-    connection = sqlite3.connect(target, timeout=30, check_same_thread=False)
+    deadline = call_deadline.get()
+    remaining = (
+        5.0
+        if deadline is None
+        else max(0.001, min(5.0, deadline - time.perf_counter()))
+    )
+    connection = sqlite3.connect(
+        str(path or settings.database_path), timeout=remaining, check_same_thread=False
+    )
     connection.row_factory = sqlite3.Row
+    connection.execute(f"PRAGMA busy_timeout = {max(1, int(remaining * 1000))}")
+    if deadline is not None:
+        connection.set_progress_handler(
+            lambda: int(time.perf_counter() >= deadline), 1000
+        )
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA synchronous = NORMAL")
-    connection.execute("PRAGMA busy_timeout = 5000")
     return connection
 
 
@@ -428,6 +442,15 @@ def db_session(path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
 def init_db(path: Path | str | None = None) -> None:
     with db_session(path) as connection:
         connection.executescript(SCHEMA)
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(sessions)")
+        }
+        if "version" not in columns:
+            connection.execute(
+                "ALTER TABLE sessions ADD COLUMN version INTEGER NOT NULL DEFAULT 0"
+            )
+        connection.execute("""CREATE TABLE IF NOT EXISTS web_sessions (
+            token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, csrf_token TEXT NOT NULL, expires_at REAL NOT NULL)""")
         _migrate_faq_documents(connection)
         _migrate_legacy_policy_documents(connection)
         refresh_policy_fts(connection)

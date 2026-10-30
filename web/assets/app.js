@@ -1,20 +1,11 @@
-const SESSION_STORAGE_KEY = "retailpilot-session";
+import { api, streamChat, setCsrfToken, LatestRequest, withButton } from "./client.js";
+import { loadSession, newSession } from "./session.js";
 
-const state = {
-  userId: "demo-user",
-  sessionId: localStorage.getItem(SESSION_STORAGE_KEY)
-    || localStorage.getItem("commerce-session")
-    || `web-${crypto.randomUUID().slice(0, 8)}`,
-  mode: "hybrid",
-  catalog: null,
-  profile: null,
-  selectedCompare: new Map(),
-  lastQuery: "",
-  products: new Map(),
-};
-
-localStorage.setItem(SESSION_STORAGE_KEY, state.sessionId);
-localStorage.removeItem("commerce-session");
+const chatRequest = new LatestRequest();
+const searchRequest = new LatestRequest();
+let chatBusy = false;
+const state = { userId: "demo-user", sessionId: loadSession("demo-user"), mode: "hybrid",
+  catalog: null, profile: null, selectedCompare: new Map(), lastQuery: "", products: new Map() };
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -49,17 +40,6 @@ function refreshIcons() {
   if (window.lucide) window.lucide.createIcons();
 }
 
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `请求失败: ${response.status}`);
-  }
-  return response.json();
-}
 
 function toast(message) {
   const item = document.createElement("div");
@@ -240,10 +220,19 @@ function addChatMessage(role, text, products = [], interleave = false) {
   refreshIcons();
 }
 
+function traceDetail(item) {
+  const parts = [item.status || "completed"];
+  if (Number.isFinite(item.latency_ms)) parts.push(`${item.latency_ms} ms`);
+  if (item.next_action) parts.push(item.next_action);
+  for (const [key, value] of Object.entries(item.counts || {})) parts.push(`${key}: ${value}`);
+  for (const [key, value] of Object.entries(item.timings_ms || {})) parts.push(`${key}: ${value} ms`);
+  return parts.join(" · ");
+}
+
 function renderChatInspector(payload) {
   const parsed = payload.parsed_queries?.[0] || {};
   const decisions = payload.decisions || [];
-  const trace = payload.trace || [];
+  const trace = payload.trace_summary || [];
   const hardAttributes = (parsed.must_have_groups || [])
     .map((group) => group.slice(0, 2).join(" / "))
     .join(", ");
@@ -275,10 +264,10 @@ function renderChatInspector(payload) {
           </div>
         </div>
       `).join("")}
-      ${trace.slice(-8).map((item, index) => `
+      ${trace.map((item, index) => `
         <div class="trace-item">
           <span class="trace-index">${decisions.length + index + 1}</span>
-          <div><strong>${escapeHtml(item.node)}</strong><span>${escapeHtml(JSON.stringify(item).slice(0, 150))}</span></div>
+          <div><strong>${escapeHtml(item.node)}</strong><span>${escapeHtml(traceDetail(item))}</span></div>
         </div>
       `).join("")}
     </div>
@@ -286,34 +275,48 @@ function renderChatInspector(payload) {
 }
 
 async function sendChat(message) {
-  addChatMessage("user", message);
+  if (chatBusy || !message.trim()) return;
+  chatBusy = true;
+  const ticket = chatRequest.start();
+  const sessionId = state.sessionId;
   const form = $("#chat-form");
+  $("#chat-send").disabled = true;
+  $("#chat-cancel").hidden = false;
+  addChatMessage("user", message);
   setLoading(form, true);
+  const progress = [];
   try {
-    const payload = await api("/api/chat", {
-      method: "POST",
-      body: JSON.stringify({
-        session_id: state.sessionId,
-        user_id: state.userId,
-        message,
-      }),
+    const payload = await streamChat({ session_id: sessionId, user_id: state.userId, message }, {
+      signal: ticket.signal,
+      onProgress(item) {
+        if (!ticket.current()) return;
+        progress.push(item);
+        renderChatInspector({ reply: "Agent 正在执行，答案将在校验后展示。", trace_summary: progress });
+        $("#chat-progress").textContent = `${item.node} · ${item.latency_ms} ms`;
+      },
     });
+    if (!ticket.current() || state.sessionId !== sessionId) return;
     rememberProducts(payload.products);
     addChatMessage("assistant", payload.reply, payload.products || [], true);
     renderChatInspector(payload);
-    const row = $("#chat-suggestions");
-    row.innerHTML = (payload.suggestions || []).map((item) => `<button data-prompt="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("");
+    $("#chat-suggestions").innerHTML = (payload.suggestions || []).map((item) => `<button data-prompt="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("");
     if (payload.needs_clarification) toast("会话进入澄清状态");
-    updateProfile(await api(`/api/profile/${state.userId}`));
+    updateProfile(await api(`/api/profile/${state.userId}`, { signal: ticket.signal }));
   } catch (error) {
-    addChatMessage("assistant", `请求失败：${error.message}`);
+    if (ticket.current() && error.name !== "AbortError") addChatMessage("assistant", `请求失败：${error.message}`);
   } finally {
-    setLoading(form, false);
+    if (state.sessionId === sessionId) {
+      chatBusy = false;
+      $("#chat-send").disabled = false;
+      $("#chat-cancel").hidden = true;
+      $("#chat-progress").textContent = "";
+      setLoading(form, false);
+    }
   }
 }
 
 function renderSearchInspector(payload) {
-  const parsed = payload.parsed_query;
+  const parsed = payload.parsed_query || {};
   const top = payload.products?.[0];
   const factClass = payload.judge?.pass ? "fact-pass" : "fact-fail";
   const hardAttributes = (parsed.must_have_groups || [])
@@ -350,10 +353,10 @@ function renderSearchInspector(payload) {
       </div>
     ` : ""}
     <div class="trace-list">
-      ${(payload.trace || []).map((item, index) => `
+      ${(payload.trace_summary || []).map((item, index) => `
         <div class="trace-item">
           <span class="trace-index">${index + 1}</span>
-          <div><strong>${escapeHtml(item.node)}</strong><span>${escapeHtml(JSON.stringify(item).slice(0, 180))}</span></div>
+          <div><strong>${escapeHtml(item.node)}</strong><span>${escapeHtml(traceDetail(item))}</span></div>
         </div>
       `).join("")}
     </div>
@@ -364,29 +367,39 @@ async function runSearch() {
   const query = $("#search-query").value.trim();
   if (!query) return;
   state.lastQuery = query;
+  const ticket = searchRequest.start();
   const results = $("#search-results");
   setLoading(results, true);
   try {
     const payload = await api("/api/search", {
       method: "POST",
+      signal: ticket.signal,
       body: JSON.stringify({
         query,
         user_id: state.userId,
         limit: 12,
         mode: state.mode,
+        query_mode: $("#search-query-mode").value,
+        ...($("#search-query-mode").value === "manual" ? {
+          target_terms: $("#search-terms").value.split(/[,，]/).map((term) => term.trim()).filter(Boolean),
+          concepts: $("#search-concepts").value.split(/[,，]/).map((term) => term.trim()).filter(Boolean),
+        } : {}),
         category: $("#search-category").value || null,
         price_max: $("#search-price").value ? Number($("#search-price").value) : null,
       }),
     });
+    if (!ticket.current()) return;
     renderProductGrid(results, payload.products);
     const relaxation = payload.relaxations?.length ? " · 最小属性放宽" : "";
     $("#search-summary").textContent = `${payload.total_candidates} 个候选 · 返回 ${payload.products.length} 款 · ${payload.latency_ms} ms${relaxation}`;
     renderSearchInspector(payload);
-    updateCatalog(await api("/api/catalog"));
+    const catalog = await api("/api/catalog", { signal: ticket.signal });
+    if (ticket.current()) updateCatalog(catalog);
   } catch (error) {
+    if (!ticket.current() || error.name === "AbortError") return;
     results.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
-    setLoading(results, false);
+    if (ticket.current()) setLoading(results, false);
   }
 }
 
@@ -499,19 +512,42 @@ async function handleProductAction(button) {
   if (action === "compare") toggleCompare(product);
 }
 
+async function restoreHistory(beforeId = null) {
+  const sessionId = state.sessionId;
+  const payload = await api(`/api/sessions/${encodeURIComponent(sessionId)}/messages?user_id=${encodeURIComponent(state.userId)}${beforeId ? `&before_id=${beforeId}` : ""}`);
+  if (sessionId !== state.sessionId) return;
+  const stream = $("#message-stream");
+  const previous = beforeId ? [...stream.children] : [];
+  stream.replaceChildren();
+  for (const item of payload.messages) if (["user", "assistant"].includes(item.role)) addChatMessage(item.role, item.content);
+  if (beforeId) for (const item of previous) stream.append(item);
+  $("#load-history").hidden = !payload.next_before_id;
+  $("#load-history").dataset.beforeId = payload.next_before_id || "";
+}
+
+async function loadWorkspace(identity) {
+  setCsrfToken(identity.csrf_token);
+  state.userId = identity.user_id;
+  state.sessionId = loadSession(state.userId);
+  state.products.clear();
+  state.selectedCompare.clear();
+  updateCompareBar();
+  renderEmptyChatInspector();
+  $("#search-inspector").replaceChildren();
+  $("#message-stream").replaceChildren();
+  $("#chat-session-label").textContent = `${identity.mode} / ${state.userId} / ${state.sessionId}`;
+  $("#auth-panel").hidden = true;
+  $("#logout").hidden = identity.mode !== "cookie";
+  const [catalog, profile] = await Promise.all([api("/api/catalog"), api(`/api/profile/${state.userId}`), restoreHistory()]);
+  updateCatalog(catalog); updateProfile(profile); refreshIcons();
+}
+
 async function init() {
-  $("#chat-session-label").textContent = `Session / ${state.sessionId}`;
   try {
-    const [catalog, profile] = await Promise.all([
-      api("/api/catalog"),
-      api(`/api/profile/${state.userId}`),
-    ]);
-    updateCatalog(catalog);
-    updateProfile(profile);
-  } catch (error) {
-    $("#catalog-status").textContent = error.message;
-    toast(error.message);
-  }
+    const identity = await api("/api/auth/session");
+    if (identity.mode === "login_required") $("#auth-panel").hidden = false;
+    else await loadWorkspace(identity);
+  } catch (error) { toast(error.message); }
   refreshIcons();
 }
 
@@ -521,13 +557,14 @@ document.addEventListener("click", async (event) => {
 
   const prompt = event.target.closest("[data-prompt]");
   if (prompt) {
+    if (chatBusy) return;
     $("#chat-input").value = prompt.dataset.prompt;
     await sendChat(prompt.dataset.prompt);
     $("#chat-input").value = "";
   }
 
   const action = event.target.closest("[data-action]");
-  if (action) await handleProductAction(action);
+  if (action) await withButton(action, () => handleProductAction(action), (error) => toast(error.message));
 
   if (event.target.closest("[data-close-dialog]")) {
     event.target.closest("dialog").close();
@@ -538,7 +575,7 @@ $("#chat-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = $("#chat-input");
   const message = input.value.trim();
-  if (!message) return;
+  if (!message || chatBusy) return;
   input.value = "";
   await sendChat(message);
 });
@@ -578,8 +615,13 @@ $("#close-profile").addEventListener("click", closeProfile);
 $("#drawer-backdrop").addEventListener("click", closeProfile);
 
 $("#clear-chat").addEventListener("click", () => {
-  state.sessionId = `web-${crypto.randomUUID().slice(0, 8)}`;
-  localStorage.setItem(SESSION_STORAGE_KEY, state.sessionId);
+  chatRequest.cancel();
+  chatBusy = false;
+  $("#chat-send").disabled = false;
+  $("#chat-cancel").hidden = true;
+  $("#chat-progress").textContent = "";
+  setLoading($("#chat-form"), false);
+  state.sessionId = newSession(state.userId);
   $("#chat-session-label").textContent = `Session / ${state.sessionId}`;
   $("#message-stream").innerHTML = `
     <article class="message assistant">
@@ -605,4 +647,31 @@ $("#clear-compare").addEventListener("click", () => {
   toast("已清空对比商品");
 });
 
+$("#chat-cancel").addEventListener("click", () => {
+  chatRequest.cancel();
+  toast("已取消等待；已提交的请求可能仍会完成，可恢复会话确认。");
+});
+$("#load-history").addEventListener("click", (event) => withButton(event.currentTarget,
+  () => restoreHistory(Number(event.currentTarget.dataset.beforeId)), (error) => toast(error.message)));
+$("#restore-history").addEventListener("click", (event) => withButton(event.currentTarget, () => restoreHistory(), (error) => toast(error.message)));
+$("#search-query-mode").addEventListener("change", (event) => { $("#manual-search-fields").hidden = event.target.value !== "manual"; });
+$("#login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await withButton($("#login-submit"), async () => {
+    const password = $("#login-password").value;
+    $("#login-password").value = "";
+    const identity = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ user_id: $("#login-user").value, password }) });
+    await loadWorkspace(identity);
+  }, (error) => toast(error.message));
+});
+$("#logout").addEventListener("click", async (event) => withButton(event.currentTarget, async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  chatRequest.cancel(); searchRequest.cancel();
+  setCsrfToken("");
+  $("#message-stream").replaceChildren();
+  $("#search-results").replaceChildren();
+  state.products.clear(); state.selectedCompare.clear();
+  $("#auth-panel").hidden = false;
+  $("#logout").hidden = true;
+}, (error) => toast(error.message)));
 init();
