@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RetailPilot</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="/assets/app.js?v=20261030" defer></script>
+</head>
+<body>
+  <header class="app-bar">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true">RP</div>
+      <div>
+        <h1>RetailPilot</h1>
+        <p id="catalog-status">正在连接本地商品库</p>
+      </div>
+    </div>
+    <div class="app-actions">
+      <div class="db-badge">
+        <span class="status-dot"></span>
+        <span id="db-count">SQLite</span>
+      </div>
+      <button class="icon-button" id="profile-button" title="用户画像" aria-label="用户画像">
+        <i data-lucide="user-round"></i>
+      </button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <nav class="primary-nav" aria-label="主导航">
+        <button class="nav-item active" data-view="chat">
+          <i data-lucide="messages-square"></i>
+          <span>导购会话</span>
+        </button>
+        <button class="nav-item" data-view="search">
+          <i data-lucide="search"></i>
+          <span>搜索实验室</span>
+        </button>
+      </nav>
+
+      <section class="sidebar-section">
+        <h2>数据概览</h2>
+        <dl class="stat-list">
+          <div><dt>商品</dt><dd id="stat-products">-</dd></div>
+          <div><dt>类目</dt><dd id="stat-categories">-</dd></div>
+          <div><dt>品牌</dt><dd id="stat-brands">-</dd></div>
+          <div><dt>搜索</dt><dd id="stat-searches">-</dd></div>
+        </dl>
+      </section>
+
+      <section class="sidebar-section source-note">
+        <h2>Catalog</h2>
+        <p>Amazon Reviews 2023</p>
+        <span id="dataset-time">-</span>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <section class="view active" id="view-chat">
+        <div class="view-header">
+          <div>
+            <p class="eyebrow" id="chat-session-label">Session / web-demo</p>
+            <h2>导购会话</h2>
+          </div>
+          <button class="icon-button" id="clear-chat" title="新会话" aria-label="新会话">
+            <i data-lucide="square-pen"></i>
+          </button>
+        </div>
+
+        <div class="chat-layout">
+          <section class="conversation-panel">
+            <div class="message-stream" id="message-stream">
+              <article class="message assistant">
+                <div class="message-avatar"><i data-lucide="sparkles"></i></div>
+                <div class="message-body">
+                  <p>你好，我在。直接说购物需求、预算和使用场景就行。</p>
+                </div>
+              </article>
+            </div>
+            <div class="suggestion-row" id="chat-suggestions">
+              <button data-prompt="推荐 50 美元以内评分高的无线耳机">无线耳机</button>
+              <button data-prompt="敏感肌用的保湿护肤品，预算 30 美元">敏感肌护肤</button>
+              <button data-prompt="帮我查一下订单 JD20260801 到哪了">查询订单</button>
+            </div>
+            <form class="composer" id="chat-form">
+              <textarea id="chat-input" rows="1" placeholder="输入购物需求或售后问题" required></textarea>
+              <button class="send-button" type="submit" title="发送" aria-label="发送">
+                <i data-lucide="arrow-up"></i>
+              </button>
+            </form>
+          </section>
+
+          <aside class="inspector" id="chat-inspector">
+            <div class="inspector-header">
+              <div>
+                <p class="eyebrow">Agent trace</p>
+                <h3>决策轨迹</h3>
+              </div>
+              <span class="mode-tag">Hybrid</span>
+            </div>
+            <div class="empty-state compact">
+              <i data-lucide="route"></i>
+              <p>发送消息后显示意图、计划和节点轨迹。</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-search">
+        <div class="view-header search-header">
+          <div>
+            <p class="eyebrow">Retrieval workbench</p>
+            <h2>搜索实验室</h2>
+          </div>
+          <div class="segmented" role="group" aria-label="召回模式">
+            <button type="button" data-mode="hybrid" class="active">Hybrid</button>
+            <button type="button" data-mode="fts">FTS baseline</button>
+          </div>
+        </div>
+
+        <form class="search-toolbar" id="search-form">
+          <label class="search-field">
+            <i data-lucide="search"></i>
+            <input id="search-query" value="推荐 50 美元以内评分高的无线耳机" required>
+          </label>
+          <select id="search-category" aria-label="类目">
+            <option value="">全部类目</option>
+          </select>
+          <label class="price-field">
+            <span>$</span>
+            <input id="search-price" type="number" min="0" step="1" placeholder="最高价">
+          </label>
+          <button class="primary-button" type="submit">
+            <i data-lucide="search"></i>
+            <span>搜索</span>
+          </button>
+        </form>
+
+        <div class="search-summary" id="search-summary"></div>
+        <div class="search-workspace">
+          <section>
+            <div class="product-grid" id="search-results"></div>
+          </section>
+          <aside class="inspector" id="search-inspector">
+            <div class="empty-state compact">
+              <i data-lucide="sliders-horizontal"></i>
+              <p>搜索后显示 Query 结构、召回路和排序分数。</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <aside class="profile-drawer" id="profile-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <p class="eyebrow">demo-user</p>
+        <h2>用户画像</h2>
+      </div>
+      <button class="icon-button" id="close-profile" title="关闭" aria-label="关闭">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <div id="profile-content"></div>
+  </aside>
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+  <dialog id="product-dialog">
+    <button class="dialog-close icon-button" data-close-dialog title="关闭" aria-label="关闭">
+      <i data-lucide="x"></i>
+    </button>
+    <div id="product-dialog-content"></div>
+  </dialog>
+
+  <dialog id="compare-dialog" class="compare-dialog">
+    <button class="dialog-close icon-button" data-close-dialog title="关闭" aria-label="关闭">
+      <i data-lucide="x"></i>
+    </button>
+    <div id="compare-dialog-content"></div>
+  </dialog>
+
+  <div class="compare-bar" id="compare-bar">
+    <div>
+      <strong>商品对比</strong>
+      <span id="compare-count">0 / 4</span>
+    </div>
+    <div class="compare-items" id="compare-items"></div>
+    <button class="icon-button compare-clear" id="clear-compare" title="清空对比" aria-label="清空对比">
+      <i data-lucide="trash-2"></i>
+    </button>
+    <button class="primary-button" id="compare-button" disabled>
+      <i data-lucide="columns-3"></i>
+      <span>开始对比</span>
+    </button>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+</body>
+</html>
