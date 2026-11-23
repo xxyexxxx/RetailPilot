@@ -8,16 +8,6 @@ import numpy as np
 
 from .asset_config import asset_settings as config
 from .config import settings
-from .embeddings import retrieval_prefixes
-from .text import hash_vector
-
-
-def text_version() -> str:
-    return (
-        f"asset-text-v1/hash/{settings.vector_dim}"
-        if config.text_model == "hash"
-        else f"asset-text-v1/{config.text_model}@{config.text_revision}"
-    )
 
 
 def visual_version() -> str:
@@ -28,40 +18,7 @@ def normalized(matrix) -> np.ndarray:
     result = np.asarray(matrix, dtype=np.float32)
     if result.ndim != 2 or not result.shape[1] or not np.isfinite(result).all():
         raise ValueError("invalid_embedding_matrix")
-    norms = np.linalg.norm(result, axis=1, keepdims=True)
-    return result / np.maximum(norms, 1e-12)
-
-
-@lru_cache(maxsize=1)
-def _sentence_model(name: str, revision: str, device: str, local_only: bool):
-    from sentence_transformers import SentenceTransformer
-
-    return SentenceTransformer(
-        name,
-        device=None if device == "auto" else device,
-        revision=revision,
-        local_files_only=local_only,
-    )
-
-
-def text_encode(values: list[str], *, query: bool = False) -> np.ndarray:
-    if config.text_model == "hash":
-        return normalized([hash_vector(value) for value in values])
-    model = _sentence_model(
-        config.text_model,
-        config.text_revision,
-        settings.embedding_device,
-        config.model_local_only,
-    )
-    prefix = retrieval_prefixes(config.text_model)[0 if query else 1]
-    return normalized(
-        model.encode(
-            [prefix + value for value in values],
-            batch_size=16,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        )
-    )
+    return result / np.maximum(np.linalg.norm(result, axis=1, keepdims=True), 1e-12)
 
 
 class SiglipEncoder:

@@ -4,7 +4,8 @@ from datetime import date
 
 import RetailPilot.database as database_module
 from RetailPilot.config import settings
-from RetailPilot.policy import _rrf, retrieve_policies
+from RetailPilot.policy import retrieve_policies
+from RetailPilot.knowledge_retrieval import RetrievalHit, fuse
 from RetailPilot.policy_ingestion import (
     PolicyDocumentInput,
     chunk_policy_document,
@@ -98,13 +99,7 @@ def test_policy_retrieval_hard_filters_before_bm25(monkeypatch) -> None:
     )
     monkeypatch.setattr(settings, "policy_vector_backend", "disabled")
     monkeypatch.setattr(settings, "policy_reranker_enabled", False)
-    monkeypatch.setattr(
-        database_module,
-        "refresh_policy_fts",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("policy retrieval must not rebuild FTS")
-        ),
-    )
+
 
     result = retrieve_policies(
         "信用卡退款多久到账",
@@ -128,20 +123,21 @@ def test_policy_retrieval_hard_filters_before_bm25(monkeypatch) -> None:
 
 
 def test_rrf_fuses_rankings_without_raw_score_addition() -> None:
-    ranking, scores, source_ranks = _rrf(
-        [["a", "b"], ["b", "c"]], k=60, limit=3
-    )
-
-    assert ranking[0] == "b"
-    assert source_ranks["b"] == [2, 1]
-    assert scores["b"] > scores["a"]
+    routes = {
+        name: [RetrievalHit(uid, name, 1000 if name == "knowledge_dense" else 0.1, rank)
+               for rank, uid in enumerate(ids, 1)]
+        for name, ids in (("knowledge_bm25", ["a", "b"]), ("knowledge_dense", ["b", "c"]))
+    }
+    ranking = fuse(routes, limit=3)
+    assert ranking[0].unit_id == "b"
+    assert list(ranking[0].metadata["source_ranks"].values()) == [2, 1]
+    assert ranking[0].score > ranking[1].score
 
 
 def test_followup_preserves_scope_date_versions_and_stale_dense_fence(monkeypatch):
     """Exercise real SQL/FTS on BOTH topics, including stale vector candidates."""
     import RetailPilot.policy as policy_module
     from RetailPilot.policy_followup import run_policy_followup
-    from RetailPilot.policy_index import PolicyDenseRecall
 
     valid = _document("adaptive-valid", topic="保修", content="质量问题超过七天可以申请核验。", platform="adaptive-test")
     invalid = [
@@ -158,11 +154,9 @@ def test_followup_preserves_scope_date_versions_and_stale_dense_fence(monkeypatc
     ingest_policy_documents([valid, *invalid], database_path=settings.database_path, source_version="adaptive-filter-test")
     from RetailPilot.policy_ingestion import chunk_policy_document
     stale_ids = [item["chunk_id"] for document in invalid for item in chunk_policy_document(document)]
-    class StaleDense:
-        def search(self, *a, **kw):
-            return PolicyDenseRecall(ranking=stale_ids, scores={cid: 1 for cid in stale_ids},
-                                     backend="fake", model="fake", index_version="stale", available=True)
-    monkeypatch.setattr(policy_module, "get_policy_dense_index", lambda: StaleDense())
+    from RetailPilot.knowledge_retrieval import TextDenseRetriever,RetrievalHit
+    monkeypatch.setattr(TextDenseRetriever,'retrieve',lambda *args: [
+        RetrievalHit(cid,'knowledge_dense',1.0,i,{}) for i,cid in enumerate(stale_ids,1)])
     initial = retrieve_policies("退货质量问题", topic="退换货", platform="adaptive-test", as_of=date(2026, 8, 23))
     assert not initial["documents"]
     seen = []

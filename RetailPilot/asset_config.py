@@ -37,8 +37,6 @@ class AssetSettings:
     )
     visual_revision: str = _env("RETAILPILOT_MM_VISUAL_REVISION", "main")
     visual_min_score: float = float(_env("RETAILPILOT_MM_VISUAL_MIN_SCORE", "0.12"))
-    text_model: str = _env("RETAILPILOT_MM_TEXT_MODEL", "hash")
-    text_revision: str = _env("RETAILPILOT_MM_TEXT_REVISION", "main")
     model_local_only: bool = _flag("LOCAL_MODELS_ONLY")
     max_bytes: int = _number("MAX_BYTES", 16 * 1024 * 1024, 1024, 64 * 1024 * 1024)
     max_pages: int = _number("MAX_PAGES", 40, 1, 100)
@@ -51,11 +49,6 @@ class AssetSettings:
     verification_tokens: int = _number("VERIFY_TOKENS", 360, 64, 1000)
     verification_timeout: int = _number("VERIFY_TIMEOUT", 8, 1, 30)
     processing_timeout: int = _number("PROCESS_TIMEOUT", 180, 10, 900)
-    qdrant_url: str = _env("RETAILPILOT_MM_QDRANT_URL")
-    qdrant_key: str = _env("RETAILPILOT_MM_QDRANT_KEY")
-    qdrant_collection: str = _env(
-        "RETAILPILOT_MM_QDRANT_COLLECTION", "retailpilot_asset_visual_v1"
-    )
 
 
 asset_settings = AssetSettings()

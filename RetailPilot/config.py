@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover - python-dotenv is a runtime dependency
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-if load_dotenv is not None and os.getenv('RETAILPILOT_PARSER_WORKER') != '1':
+if load_dotenv is not None and os.getenv("RETAILPILOT_PARSER_WORKER") != "1":
     load_dotenv(ROOT_DIR / ".env")
 
 
@@ -30,16 +30,9 @@ class Settings:
     embedding_min_score: float
     commerce_platform: str
     policy_vector_backend: str
-    policy_qdrant_url: str
-    policy_qdrant_api_key: str
-    policy_qdrant_path: Path
-    policy_qdrant_collection: str
     policy_embedding_model: str
     policy_reranker_model: str
     policy_reranker_enabled: bool
-    policy_rrf_k: int
-    policy_dense_limit: int
-    policy_bm25_limit: int
     policy_fusion_limit: int
     policy_followup_enabled: bool
     policy_max_extra_hops: int
@@ -99,30 +92,19 @@ settings = Settings(
     artifacts_dir=_project_path("RETAILPILOT_ARTIFACTS_DIR", ROOT_DIR / "artifacts"),
     web_dir=_project_path("RETAILPILOT_WEB_DIR", ROOT_DIR / "web"),
     vector_dim=int(_env("RETAILPILOT_VECTOR_DIM", "384")),
-    # Neural indexes are promoted explicitly after shadow-eval gates. Keeping
-    # hash as the default prevents a newly built local index from silently
-    # changing production ranking before it has passed regression.
-    embedding_model=_env("RETAILPILOT_EMBEDDING_MODEL", "hash").strip(),
+    # Dense spaces are opt-in. Hash requires an explicit offline configuration.
+    embedding_model=_env("RETAILPILOT_EMBEDDING_MODEL", "disabled").strip(),
     embedding_index_dir=_project_path(
         "RETAILPILOT_EMBEDDING_INDEX_DIR", ROOT_DIR / "data" / "embeddings"
     ),
     embedding_device=_env("RETAILPILOT_EMBEDDING_DEVICE", "auto").strip().lower(),
     embedding_min_score=float(_env("RETAILPILOT_EMBEDDING_MIN_SCORE", "0.42")),
     commerce_platform=_env("RETAILPILOT_PLATFORM", "demo-mall").strip() or "demo-mall",
-    # Policy retrieval never fabricates semantic similarity with hash vectors.
-    # `disabled` keeps the base install lightweight; install the policy-RAG
-    # extras, build the Qdrant collection, then set this to `qdrant`.
+    # Legacy policy model selection remains a configuration fallback only.
+    # New domain models are selected by RETAILPILOT_KNOWLEDGE_*_MODEL.
     policy_vector_backend=os.getenv("POLICY_VECTOR_BACKEND", "disabled")
     .strip()
     .lower(),
-    policy_qdrant_url=os.getenv("POLICY_QDRANT_URL", "").strip(),
-    policy_qdrant_api_key=os.getenv("POLICY_QDRANT_API_KEY", "").strip(),
-    policy_qdrant_path=_project_path(
-        "POLICY_QDRANT_PATH", ROOT_DIR / "data" / "qdrant"
-    ),
-    policy_qdrant_collection=os.getenv(
-        "POLICY_QDRANT_COLLECTION", "ecommerce_policy_chunks"
-    ).strip(),
     policy_embedding_model=os.getenv(
         "POLICY_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5"
     ).strip(),
@@ -133,9 +115,6 @@ settings = Settings(
     .strip()
     .lower()
     in {"1", "true", "yes", "on"},
-    policy_rrf_k=max(1, int(os.getenv("POLICY_RRF_K", "60"))),
-    policy_dense_limit=max(1, int(os.getenv("POLICY_DENSE_LIMIT", "40"))),
-    policy_bm25_limit=max(1, int(os.getenv("POLICY_BM25_LIMIT", "40"))),
     policy_fusion_limit=max(1, int(os.getenv("POLICY_FUSION_LIMIT", "30"))),
     policy_followup_enabled=os.getenv("POLICY_FOLLOWUP_ENABLED", "true").lower()
     in {"1", "true", "yes", "on"},
@@ -187,5 +166,3 @@ def ensure_directories() -> None:
     settings.database_path.parent.mkdir(parents=True, exist_ok=True)
     settings.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     settings.artifacts_dir.mkdir(parents=True, exist_ok=True)
-    settings.embedding_index_dir.mkdir(parents=True, exist_ok=True)
-    settings.policy_qdrant_path.parent.mkdir(parents=True, exist_ok=True)

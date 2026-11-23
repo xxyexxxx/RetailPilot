@@ -1,0 +1,2022 @@
+{
+  "baseline_ref": "a18faa1",
+  "measured_on": "2026-11-23",
+  "real_models": false,
+  "notes": [
+    "Synthetic OCR/VLM/visual encoder; explicit hash text vectors. Not a pretrained-model quality benchmark.",
+    "Legacy Unit Recall and applicability probe are unavailable, not zero.",
+    "New corpus includes product profile and policy text vectors; legacy fixture did not build these. Payload size and timing are not equal-work comparisons.",
+    "Latency includes retrieval, evidence hydration and deterministic answer validation; one pass per case, no confidence interval."
+  ],
+  "legacy": {
+    "fixture": "synthetic-offline-v1",
+    "real_models": false,
+    "top_k": 3,
+    "cases": 11,
+    "runs": [
+      {
+        "mode": "baseline",
+        "sku": {
+          "queries": 5,
+          "recall": 0.2,
+          "mrr": 0.2,
+          "ndcg": 0.2
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 0,
+          "mrr": 0,
+          "ndcg": 0
+        },
+        "answer_correctness": 0.18181818181818182,
+        "citation_accuracy": null,
+        "citations": 0,
+        "latency_ms": {
+          "p50": 3.81,
+          "p95": 21.1445
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 154,
+        "sqlite_database_bytes": 487424,
+        "asset_store_bytes": 0,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 22.443
+          },
+          {
+            "case": "visual-color",
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 10.434
+          },
+          {
+            "case": "image-parameter",
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 9.575
+          },
+          {
+            "case": "multi-image",
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 9.674
+          },
+          {
+            "case": "catalog-control",
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 19.846
+          },
+          {
+            "case": "pdf-body",
+            "sku_rank": null,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 3.81
+          },
+          {
+            "case": "table-number",
+            "sku_rank": null,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 2.011
+          },
+          {
+            "case": "flowchart",
+            "sku_rank": null,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 1.885
+          },
+          {
+            "case": "figure-nearby",
+            "sku_rank": null,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 2.017
+          },
+          {
+            "case": "pdf-fallback",
+            "sku_rank": null,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 2.123
+          },
+          {
+            "case": "missing-vision",
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 2.324
+          }
+        ]
+      },
+      {
+        "mode": "enhanced_text",
+        "sku": {
+          "queries": 5,
+          "recall": 0.8,
+          "mrr": 0.8,
+          "ndcg": 0.8
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "answer_correctness": 0.9090909090909091,
+        "citation_accuracy": 1.0,
+        "citations": 8,
+        "latency_ms": {
+          "p50": 19.119,
+          "p95": 49.555
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 5293,
+        "sqlite_database_bytes": 520192,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 59.647
+          },
+          {
+            "case": "visual-color",
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 15.27
+          },
+          {
+            "case": "image-parameter",
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 39.463
+          },
+          {
+            "case": "multi-image",
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 33.033
+          },
+          {
+            "case": "catalog-control",
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 20.208
+          },
+          {
+            "case": "pdf-body",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 19.119
+          },
+          {
+            "case": "table-number",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 10.712
+          },
+          {
+            "case": "flowchart",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 15.769
+          },
+          {
+            "case": "figure-nearby",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 23.259
+          },
+          {
+            "case": "pdf-fallback",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 9.997
+          },
+          {
+            "case": "missing-vision",
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 18.062
+          }
+        ]
+      },
+      {
+        "mode": "full",
+        "sku": {
+          "queries": 5,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "answer_correctness": 1,
+        "citation_accuracy": 1.0,
+        "citations": 8,
+        "latency_ms": {
+          "p50": 21.042,
+          "p95": 37.851
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 5389,
+        "sqlite_database_bytes": 520192,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 42.242
+          },
+          {
+            "case": "visual-color",
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 33.46
+          },
+          {
+            "case": "image-parameter",
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 31.16
+          },
+          {
+            "case": "multi-image",
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 33.379
+          },
+          {
+            "case": "catalog-control",
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 21.042
+          },
+          {
+            "case": "pdf-body",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 18.904
+          },
+          {
+            "case": "table-number",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 10.406
+          },
+          {
+            "case": "flowchart",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 14.881
+          },
+          {
+            "case": "figure-nearby",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 22.972
+          },
+          {
+            "case": "pdf-fallback",
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 9.541
+          },
+          {
+            "case": "missing-vision",
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 18.28
+          }
+        ]
+      }
+    ]
+  },
+  "unified": {
+    "fixture": "synthetic-offline-v1",
+    "real_models": false,
+    "top_k": 3,
+    "cases": 11,
+    "runs": [
+      {
+        "mode": "unified",
+        "sku": {
+          "queries": 5,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": true,
+        "answer_correctness": 1,
+        "citation_accuracy": 1.0,
+        "citations": 9,
+        "latency_ms": {
+          "p50": 30.553,
+          "p95": 57.2795
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20961,
+        "sqlite_database_bytes": 503808,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 64.211
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 50.348
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 39.376
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 39.551
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 31.455
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 25.0
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.288
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 25.626
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 30.553
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.481
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 26.085
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 867.197799962014,
+        "embedding_rebuild_ms": 19.923799904063344,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "product",
+            "space": "visual",
+            "model": "asset-visual-v1/google/siglip2-base-patch16-224@main",
+            "built": 4,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      },
+      {
+        "mode": "bm25_only",
+        "sku": {
+          "queries": 5,
+          "recall": 0.8,
+          "mrr": 0.8,
+          "ndcg": 0.8
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": false,
+        "answer_correctness": 0.9090909090909091,
+        "citation_accuracy": 1.0,
+        "citations": 8,
+        "latency_ms": {
+          "p50": 24.787,
+          "p95": 34.949
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20961,
+        "sqlite_database_bytes": 503808,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 36.885
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 18.674
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 32.438
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 33.013
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 25.278
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 21.746
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 16.157
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 21.957
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 29.617
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 17.924
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 24.787
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 534.2853001784533,
+        "embedding_rebuild_ms": 19.896799931302667,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "product",
+            "space": "visual",
+            "model": "asset-visual-v1/google/siglip2-base-patch16-224@main",
+            "built": 4,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      },
+      {
+        "mode": "dense_only",
+        "sku": {
+          "queries": 5,
+          "recall": 0.8,
+          "mrr": 0.8,
+          "ndcg": 0.8
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 0.7777777777777778,
+          "mrr": 0.7777777777777778,
+          "ndcg": 0.7777777777777778
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 0.7777777777777778,
+          "mrr": 0.7777777777777778,
+          "ndcg": 0.7777777777777778
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 0.7777777777777778,
+          "mrr": 0.7777777777777778,
+          "ndcg": 0.7777777777777778
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": false,
+        "answer_correctness": 0.8181818181818182,
+        "citation_accuracy": 1.0,
+        "citations": 7,
+        "latency_ms": {
+          "p50": 20.699,
+          "p95": 34.7935
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20961,
+        "sqlite_database_bytes": 499712,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 36.439
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 18.839
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 32.87
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 33.148
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 24.623
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 21.352
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 17.262
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.699
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": null,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 9.001
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 14.944
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 18.741
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 544.1550000105053,
+        "embedding_rebuild_ms": 20.04770003259182,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "product",
+            "space": "visual",
+            "model": "asset-visual-v1/google/siglip2-base-patch16-224@main",
+            "built": 4,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      },
+      {
+        "mode": "bm25_dense",
+        "sku": {
+          "queries": 5,
+          "recall": 0.8,
+          "mrr": 0.8,
+          "ndcg": 0.8
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": false,
+        "answer_correctness": 0.9090909090909091,
+        "citation_accuracy": 1.0,
+        "citations": 8,
+        "latency_ms": {
+          "p50": 27.222,
+          "p95": 42.703
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20961,
+        "sqlite_database_bytes": 503808,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 38.377
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 23.293
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 36.792
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 47.029
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 28.689
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 25.116
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.75
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 25.52
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 30.609
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.772
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 27.222
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 531.6796000115573,
+        "embedding_rebuild_ms": 19.186999881640077,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "product",
+            "space": "visual",
+            "model": "asset-visual-v1/google/siglip2-base-patch16-224@main",
+            "built": 4,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      },
+      {
+        "mode": "bm25_dense_visual",
+        "sku": {
+          "queries": 5,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": true,
+        "answer_correctness": 1,
+        "citation_accuracy": 1.0,
+        "citations": 9,
+        "latency_ms": {
+          "p50": 32.023,
+          "p95": 47.873
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20961,
+        "sqlite_database_bytes": 503808,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 42.452
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 53.294
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 39.332
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 40.838
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 32.442
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 26.418
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.546
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 25.559
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 32.023
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 19.794
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 27.131
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 549.5635999832302,
+        "embedding_rebuild_ms": 19.56599997356534,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "product",
+            "space": "visual",
+            "model": "asset-visual-v1/google/siglip2-base-patch16-224@main",
+            "built": 4,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      },
+      {
+        "mode": "visual_disabled",
+        "sku": {
+          "queries": 5,
+          "recall": 0.8,
+          "mrr": 0.8,
+          "ndcg": 0.8
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 0.8888888888888888,
+          "mrr": 0.8888888888888888,
+          "ndcg": 0.8888888888888888
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": false,
+        "answer_correctness": 0.9090909090909091,
+        "citation_accuracy": 1.0,
+        "citations": 8,
+        "latency_ms": {
+          "p50": 26.305,
+          "p95": 39.052499999999995
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20865,
+        "sqlite_database_bytes": 503808,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 39.58
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 23.262
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 36.024
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 38.525
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 29.051
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 26.082
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.725
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 26.239
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 31.14
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 19.997
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 26.305
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 615.3357999864966,
+        "embedding_rebuild_ms": 12.56860001012683,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      },
+      {
+        "mode": "profile_only",
+        "sku": {
+          "queries": 5,
+          "recall": 0.4,
+          "mrr": 0.4,
+          "ndcg": 0.4
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 0.5555555555555556,
+          "mrr": 0.5555555555555556,
+          "ndcg": 0.5555555555555556
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 0.5555555555555556,
+          "mrr": 0.5555555555555556,
+          "ndcg": 0.5555555555555556
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 0.5555555555555556,
+          "mrr": 0.5555555555555556,
+          "ndcg": 0.5555555555555556
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": false,
+        "answer_correctness": 0.6363636363636364,
+        "citation_accuracy": 1.0,
+        "citations": 5,
+        "latency_ms": {
+          "p50": 27.43,
+          "p95": 32.5105
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20961,
+        "sqlite_database_bytes": 503808,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 29.442
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 26.695
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 1,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 32.156
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 0,
+            "evidence_rank": 0,
+            "sku_rank": 0,
+            "asset_rank": 0,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 32.028
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 1,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 32.865
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 26.917
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 21.287
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 27.307
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 31.49
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 20.697
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 27.43
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 536.74569982104,
+        "embedding_rebuild_ms": 19.50399996712804,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "product",
+            "space": "visual",
+            "model": "asset-visual-v1/google/siglip2-base-patch16-224@main",
+            "built": 4,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      },
+      {
+        "mode": "asset_only",
+        "sku": {
+          "queries": 5,
+          "recall": 0.8,
+          "mrr": 0.8,
+          "ndcg": 0.8
+        },
+        "asset": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "unit": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "evidence": {
+          "queries": 9,
+          "recall": 1,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        },
+        "policy_applicability_accuracy": 1.0,
+        "redundant_text_indexes": 0,
+        "visual_only_recall": true,
+        "answer_correctness": 0.9090909090909091,
+        "citation_accuracy": 1.0,
+        "citations": 9,
+        "latency_ms": {
+          "p50": 41.661,
+          "p95": 58.594
+        },
+        "sqlite_index_bytes": null,
+        "index_payload_bytes": 20961,
+        "sqlite_database_bytes": 503808,
+        "asset_store_bytes": 10847,
+        "external_model_calls": 0,
+        "external_model_cost": 0.0,
+        "cases": [
+          {
+            "case": "poster-function",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 43.358
+          },
+          {
+            "case": "visual-color",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 52.568
+          },
+          {
+            "case": "image-parameter",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 41.661
+          },
+          {
+            "case": "multi-image",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": 1,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 54.841
+          },
+          {
+            "case": "catalog-control",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": 0,
+            "asset_rank": null,
+            "answer_correct": false,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 62.347
+          },
+          {
+            "case": "pdf-body",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 45.281
+          },
+          {
+            "case": "table-number",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 23.232
+          },
+          {
+            "case": "flowchart",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 40.919
+          },
+          {
+            "case": "figure-nearby",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 34.927
+          },
+          {
+            "case": "pdf-fallback",
+            "unit_rank": 1,
+            "evidence_rank": 1,
+            "sku_rank": null,
+            "asset_rank": 1,
+            "answer_correct": true,
+            "citations": 1,
+            "correct_citations": 1,
+            "latency_ms": 26.641
+          },
+          {
+            "case": "missing-vision",
+            "unit_rank": null,
+            "evidence_rank": null,
+            "sku_rank": null,
+            "asset_rank": null,
+            "answer_correct": true,
+            "citations": 0,
+            "correct_citations": 0,
+            "latency_ms": 33.202
+          }
+        ],
+        "ingestion_and_embedding_build_ms": 550.1608999911696,
+        "embedding_rebuild_ms": 19.919499987736344,
+        "embedding_builds": [
+          {
+            "domain": "product",
+            "space": "text",
+            "model": "knowledge-text-v1/product/hash@main",
+            "built": 7,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "policy",
+            "space": "text",
+            "model": "knowledge-text-v1/policy/hash@main",
+            "built": 6,
+            "failed": 0,
+            "unchanged": 0
+          },
+          {
+            "domain": "product",
+            "space": "visual",
+            "model": "asset-visual-v1/google/siglip2-base-patch16-224@main",
+            "built": 4,
+            "failed": 0,
+            "unchanged": 0
+          }
+        ],
+        "policy_applicability_probe": {
+          "accuracy": 1.0,
+          "recalled": [
+            "probe-valid"
+          ],
+          "valid": "probe-valid",
+          "excluded": 8
+        }
+      }
+    ]
+  }
+}

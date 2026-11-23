@@ -1,0 +1,101 @@
+{
+  "baseline_ref": "a18faa1",
+  "baseline": {
+    "passed": 253,
+    "failed": 6,
+    "failures": [
+      "tests/test_api.py::test_api_smoke",
+      "tests/test_evaluation_pipeline.py::test_low_candidate_policy_relaxes_before_zero_results\nFAILED",
+      "tests/test_retrieval.py::test_hybrid_search_respects_budget_and_negative_brand\nFAILED",
+      "tests/test_retrieval.py::test_approximate_budget_keeps_nearby_exact_catalog_match\n6"
+    ]
+  },
+  "current": {
+    "passed": 262,
+    "failed": 4,
+    "failures": [
+      "tests/test_api.py::test_api_smoke",
+      "tests/test_evaluation_pipeline.py::test_low_candidate_policy_relaxes_before_zero_results\nFAILED",
+      "tests/test_retrieval.py::test_hybrid_search_respects_budget_and_negative_brand\nFAILED",
+      "tests/test_retrieval.py::test_approximate_budget_keeps_nearby_exact_catalog_match\n6"
+    ],
+    "new_failures": []
+  },
+  "frontend": {
+    "passed": 8,
+    "failed": 0
+  },
+  "migration": {
+    "products": {
+      "before": 4203,
+      "after": 4203,
+      "all_fields_equal": true,
+      "existed_before": true
+    },
+    "policy_documents": {
+      "before": 6,
+      "after": 6,
+      "all_fields_equal": true,
+      "existed_before": true
+    },
+    "assets": {
+      "before": 0,
+      "after": 0,
+      "all_fields_equal": true,
+      "existed_before": false
+    },
+    "asset_elements": {
+      "before": 0,
+      "after": 0,
+      "all_fields_equal": true,
+      "existed_before": false
+    },
+    "backup_bytes": 15695872,
+    "current_database_bytes": 35430400,
+    "foreign_key_check": []
+  },
+  "consistency": {
+    "units": [
+      {
+        "domain": "policy",
+        "source_format": "markdown",
+        "modality": "text",
+        "count": 6
+      },
+      {
+        "domain": "product",
+        "source_format": "catalog",
+        "modality": "text",
+        "count": 4203
+      }
+    ],
+    "foreign_key_errors": [],
+    "missing_fts": 0,
+    "orphan_fts": 0,
+    "duplicate_fts": 0,
+    "stale_policy_sources": 0,
+    "stale_vectors": 0,
+    "vectors": [
+      {
+        "space": "text",
+        "model_version": "knowledge-text-v1/product/hash@main",
+        "dim": 384,
+        "count": 4203
+      }
+    ],
+    "qdrant": {
+      "configured": false,
+      "generation": 21015,
+      "synchronized": false
+    }
+  },
+  "rollback_restore": {
+    "products": 4203,
+    "policy_chunks": 6,
+    "tested": true
+  },
+  "runtime_limits": [
+    "No pretrained SigLIP2 / full Docling weights / live OCR or VLM endpoint quality validation",
+    "Local migrated database contains no image/PDF assets; fixture tests cover asset migration."
+  ]
+}

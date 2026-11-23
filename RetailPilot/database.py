@@ -9,6 +9,7 @@ from typing import Any, Iterator
 
 from .asset_schema import ASSET_SCHEMA
 from .config import ensure_directories, settings
+from .knowledge_schema import KNOWLEDGE_SCHEMA
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -50,23 +51,6 @@ CREATE INDEX IF NOT EXISTS idx_products_brand
 ON products(brand);
 CREATE INDEX IF NOT EXISTS idx_products_quality
 ON products(quality_score DESC, popularity_score DESC);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS product_fts USING fts5(
-    sku UNINDEXED,
-    title,
-    brand,
-    category,
-    tags,
-    description,
-    attributes,
-    tokenize = 'unicode61 remove_diacritics 2'
-);
-
-CREATE TABLE IF NOT EXISTS product_vectors (
-    sku TEXT PRIMARY KEY REFERENCES products(sku) ON DELETE CASCADE,
-    dim INTEGER NOT NULL,
-    vector BLOB NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
@@ -200,40 +184,6 @@ CREATE INDEX IF NOT EXISTS idx_policy_documents_filter
 ON policy_documents(
     status, audience, platform, topic, category_scope,
     effective_from, effective_to, priority DESC
-);
-
-CREATE TABLE IF NOT EXISTS policy_chunks (
-    chunk_id TEXT PRIMARY KEY,
-    doc_id TEXT NOT NULL REFERENCES policy_documents(doc_id) ON DELETE CASCADE,
-    parent_chunk_id TEXT,
-    chunk_type TEXT NOT NULL CHECK(chunk_type IN ('leaf', 'child', 'parent')),
-    ordinal INTEGER NOT NULL,
-    section_path TEXT NOT NULL DEFAULT '',
-    page_no INTEGER,
-    char_start INTEGER NOT NULL DEFAULT 0,
-    char_end INTEGER NOT NULL DEFAULT 0,
-    content TEXT NOT NULL,
-    contextualized_content TEXT NOT NULL,
-    token_count INTEGER NOT NULL DEFAULT 0,
-    content_hash TEXT NOT NULL,
-    embedding_model TEXT NOT NULL DEFAULT '',
-    embedding_version TEXT NOT NULL DEFAULT '',
-    index_version TEXT NOT NULL DEFAULT '',
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(doc_id, ordinal, chunk_type, content_hash)
-);
-CREATE INDEX IF NOT EXISTS idx_policy_chunks_document
-ON policy_chunks(doc_id, chunk_type, ordinal);
-CREATE INDEX IF NOT EXISTS idx_policy_chunks_parent
-ON policy_chunks(parent_chunk_id, ordinal);
-
--- FTS stores pre-tokenized Chinese/English terms. Parent chunks are context
--- expansion records and are deliberately not inserted into this recall index.
-CREATE VIRTUAL TABLE IF NOT EXISTS policy_chunk_fts USING fts5(
-    chunk_id UNINDEXED,
-    search_text,
-    tokenize = 'unicode61 remove_diacritics 2'
 );
 
 CREATE TABLE IF NOT EXISTS policy_ingestion_runs (
@@ -442,7 +392,7 @@ def db_session(path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
 
 def init_db(path: Path | str | None = None) -> None:
     with db_session(path) as connection:
-        connection.executescript(SCHEMA + ASSET_SCHEMA)
+        connection.executescript(SCHEMA + ASSET_SCHEMA + KNOWLEDGE_SCHEMA)
         columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(sessions)")
         }
@@ -453,8 +403,10 @@ def init_db(path: Path | str | None = None) -> None:
         connection.execute("""CREATE TABLE IF NOT EXISTS web_sessions (
             token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, csrf_token TEXT NOT NULL, expires_at REAL NOT NULL)""")
         _migrate_faq_documents(connection)
+        from .knowledge import migrate, sync_products
+        migrate(connection)
         _migrate_legacy_policy_documents(connection)
-        refresh_policy_fts(connection)
+        sync_products(connection)
 
 
 def _migrate_faq_documents(connection: sqlite3.Connection) -> None:
@@ -504,98 +456,21 @@ def _migrate_legacy_policy_documents(connection: sqlite3.Connection) -> None:
             metadata_json, updated_at
         FROM faq_documents
         WHERE 1
-        ON CONFLICT(doc_id) DO UPDATE SET
-            topic=excluded.topic,
-            title=excluded.title,
-            content=excluded.content,
-            source_name=excluded.source_name,
-            platform=excluded.platform,
-            category_scope=excluded.category_scope,
-            effective_from=excluded.effective_from,
-            effective_to=excluded.effective_to,
-            version=excluded.version,
-            status=excluded.status,
-            priority=excluded.priority,
-            metadata_json=excluded.metadata_json,
-            updated_at=excluded.updated_at
+        ON CONFLICT(doc_id) DO NOTHING
         """
     )
-    connection.execute(
-        """
-        INSERT INTO policy_chunks(
-            chunk_id, doc_id, parent_chunk_id, chunk_type, ordinal,
-            section_path, char_start, char_end, content,
-            contextualized_content, token_count, content_hash, metadata_json
-        )
-        SELECT
-            'legacy:' || doc_id, doc_id, NULL, 'leaf', 0, title, 0,
-            LENGTH(content), content,
-            topic || ' | ' || title || ' | ' || content,
-            LENGTH(content), 'legacy:' || doc_id, '{}'
-        FROM faq_documents
-        WHERE 1
-        ON CONFLICT(chunk_id) DO UPDATE SET
-            section_path=excluded.section_path,
-            char_end=excluded.char_end,
-            content=excluded.content,
-            contextualized_content=excluded.contextualized_content,
-            token_count=excluded.token_count
-        """
-    )
-
-
-def refresh_policy_fts(
-    connection: sqlite3.Connection, doc_ids: list[str] | None = None
-) -> None:
-    """Synchronize pre-tokenized searchable chunks with the FTS5 table."""
-
-    from .text import tokenize
-
-    if doc_ids:
-        placeholders = ",".join("?" for _ in doc_ids)
-        chunk_rows = connection.execute(
-            f"""
-            SELECT chunk_id, contextualized_content
-            FROM policy_chunks
-            WHERE chunk_type != 'parent' AND doc_id IN ({placeholders})
-            ORDER BY doc_id, ordinal
-            """,
-            doc_ids,
-        ).fetchall()
-        chunk_ids = [str(row["chunk_id"]) for row in chunk_rows]
-        if chunk_ids:
-            id_placeholders = ",".join("?" for _ in chunk_ids)
-            connection.execute(
-                f"DELETE FROM policy_chunk_fts WHERE chunk_id IN ({id_placeholders})",
-                chunk_ids,
-            )
-    else:
-        connection.execute("DELETE FROM policy_chunk_fts")
-        chunk_rows = connection.execute(
-            """
-            SELECT chunk_id, contextualized_content
-            FROM policy_chunks
-            WHERE chunk_type != 'parent'
-            ORDER BY doc_id, ordinal
-            """
-        ).fetchall()
-    connection.executemany(
-        "INSERT INTO policy_chunk_fts(chunk_id, search_text) VALUES(?, ?)",
-        [
-            (
-                row["chunk_id"],
-                " ".join(
-                    dict.fromkeys(
-                        tokenize(
-                            str(row["contextualized_content"]),
-                            include_expansion=False,
-                        )
-                    )
-                ),
-            )
-            for row in chunk_rows
-        ],
-    )
+    from .knowledge import write_markdown
+    from .policy_ingestion import PolicyDocumentInput, chunk_policy_document
+    for row in connection.execute("SELECT * FROM policy_documents WHERE checksum LIKE 'legacy:%'").fetchall():
+        sid = 'markdown:' + row['doc_id']
+        existing = connection.execute("SELECT content_hash FROM knowledge_sources WHERE source_id=?", (sid,)).fetchone()
+        from .knowledge import digest
+        if existing and existing[0] == digest(row['content']):
+            continue
+        document = PolicyDocumentInput(doc_id=row['doc_id'], policy_id=row['policy_id'],topic=row['topic'],
+                                       title=row['title'],content=row['content'],source_name=row['source_name'],
+                                       source_uri=row['source_uri'],version=row['version'])
+        write_markdown(connection,document,chunk_policy_document(document))
 
 
 def record_llm_usage(payload: dict[str, Any]) -> None:

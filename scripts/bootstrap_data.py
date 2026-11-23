@@ -20,8 +20,7 @@ from RetailPilot.config import settings
 from RetailPilot.database import db_session, init_db, json_dumps, set_metadata
 from RetailPilot.eval_dataset import seed_retrieval_eval_dataset
 from RetailPilot.taxonomy import category_label, category_tags
-from RetailPilot.text import compact_text, hash_vector, plain_text, vector_to_blob
-
+from RetailPilot.text import compact_text, plain_text
 
 HF_REPOSITORY = "McAuley-Lab/Amazon-Reviews-2023"
 HF_BASE = f"https://huggingface.co/datasets/{HF_REPOSITORY}/resolve/main/raw/meta_categories"
@@ -141,18 +140,6 @@ def normalize_product(record: dict[str, Any], category: str) -> dict[str, Any] |
     quality_score = max(0.0, min(1.0, bayesian_rating / 5))
     popularity_score = max(0.0, min(1.0, math.log1p(rating_count) / 12))
     source_page = f"https://www.amazon.com/dp/{sku}"
-    search_text = " ".join(
-        [
-            title,
-            brand,
-            category,
-            category_label(category),
-            " ".join(tags),
-            " ".join(features),
-            description,
-            compact_text(attributes, 3000),
-        ]
-    )
     return {
         "sku": sku,
         "title": title,
@@ -174,7 +161,6 @@ def normalize_product(record: dict[str, Any], category: str) -> dict[str, Any] |
         "source_url": source_page,
         "quality_score": quality_score,
         "popularity_score": popularity_score,
-        "vector": vector_to_blob(hash_vector(search_text)),
     }
 
 
@@ -275,7 +261,7 @@ def stream_laptop_products(limit: int) -> Iterable[dict[str, Any]]:
 def reset_database() -> None:
     init_db()
     with db_session() as connection:
-        connection.execute("DELETE FROM product_fts")
+
         for table in (
             "catalog_imports",
             "llm_judge_cache",
@@ -295,7 +281,6 @@ def reset_database() -> None:
             "user_preferences",
             "users",
             "product_commerce",
-            "product_vectors",
             "products",
             "metadata",
         ):
@@ -340,26 +325,9 @@ def insert_products(products: Iterable[dict[str, Any]]) -> int:
             )
             if cursor.rowcount != 1:
                 continue
-            connection.execute(
-                """
-                INSERT INTO product_fts(sku, title, brand, category, tags, description, attributes)
-                VALUES(?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    product["sku"],
-                    product["title"],
-                    product["brand"],
-                    f"{product['category']} {product['category_label']}",
-                    product["tags_text"],
-                    product["description"],
-                    product["attributes_text"],
-                ),
-            )
-            connection.execute(
-                "INSERT INTO product_vectors(sku, dim, vector) VALUES(?, ?, ?)",
-                (product["sku"], settings.vector_dim, product["vector"]),
-            )
             count += 1
+        from RetailPilot.knowledge import sync_products
+        sync_products(connection)
     return count
 
 

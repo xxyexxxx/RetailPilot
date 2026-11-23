@@ -28,7 +28,7 @@ export function assetEvidenceCard(item) {
   const image = preview(location.preview_url || location.page_preview_url, label);
   const description = item.matched_description || "";
   const routes = Object.keys(item.routes || {}).map((route) => ({
-    asset_bm25: "关键词", asset_text: "文本向量", asset_visual: "视觉向量",
+    knowledge_bm25: "关键词", knowledge_dense: "文本向量", knowledge_visual: "视觉向量",
   })[route] || "").filter(Boolean);
   return `<details class="asset-evidence"><summary>${escape(label)}${routes.length ? " · " + escape(routes.join("、")) : ""}</summary>
     ${image}${description ? `<p>${escape(description)}</p>` : ""}

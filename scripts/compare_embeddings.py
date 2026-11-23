@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from RetailPilot.config import settings
-from RetailPilot.embeddings import reset_embedding_index_cache
+from RetailPilot.knowledge_index import build
 from RetailPilot.evaluation import evaluate_mode, load_cases, load_qrels
 
 
@@ -27,7 +27,7 @@ def main() -> None:
     try:
         for model in args.models:
             settings.embedding_model = model
-            reset_embedding_index_cache()
+            build("product",force=True)
             payload = evaluate_mode("hybrid", cases, qrels)
             runs[model] = {
                 "metrics": payload["metrics"],
@@ -36,7 +36,7 @@ def main() -> None:
             }
     finally:
         settings.embedding_model = original_model
-        reset_embedding_index_cache()
+        build("product",force=True)
 
     report = {
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),

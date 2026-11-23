@@ -16,7 +16,7 @@ test("asset evidence escapes quotes and links previews to the same origin", () =
   assert.match(rendered, /&lt;img onerror=alert\(1\)&gt;/);
   assert.ok(rendered.includes(url));
   assert.ok(!rendered.includes("javascript:"));
-  assert.match(assetEvidenceCard({routes: {asset_visual: {}}, matched_description: "<script>"}), /视觉向量/);
+  assert.match(assetEvidenceCard({routes: {knowledge_visual: {}}, matched_description: "<script>"}), /视觉向量/);
   assert.ok(assetGallery([{asset_type: "product_document", elements: [{preview_url: url}]}]).includes(url));
 });
 

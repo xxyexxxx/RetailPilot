@@ -14,6 +14,8 @@ def citation_key(citation: dict[str, Any]) -> str:
     identity = {
         key: citation.get(key)
         for key in (
+            "unit_id",
+            "source_id",
             "sku",
             "asset_id",
             "element_id",
@@ -48,8 +50,25 @@ def claim(
     *,
     claim_type: str = "fact",
 ) -> dict[str, Any]:
+    if (
+        citation.get("sku")
+        and not citation.get("asset_id")
+        and not citation.get("unit_id")
+    ):
+        from .knowledge_evidence import hydrate
+
+        package = hydrate(f"profile:{citation['sku']}:0")
+        if package:
+            citation.update(
+                unit_id=package.unit_id,
+                source_id=package.source_id,
+                source_version=package.source_location["source_version"],
+                field_path=f"products.{citation.get('field', '')}",
+            )
     normalized = dict(citation)
-    normalized["citation_id"] = normalized.get("citation_id") or citation_key(normalized)
+    normalized["citation_id"] = normalized.get("citation_id") or citation_key(
+        normalized
+    )
     return {
         "claim": text,
         "claim_type": claim_type,
@@ -68,19 +87,33 @@ def claim(
 def policy_citation(document: dict[str, Any]) -> dict[str, Any]:
     """Build policy citations from the actual snapshot, never model metadata."""
     return {
-        "chunk_id": document["chunk_id"], "doc_id": document["doc_id"],
-        "field": "content", "value": document["content"], "quoted_text": document["content"],
-        "source": document.get("source", ""), "source_uri": document.get("source_uri", ""),
-        "section_path": document.get("section_path", ""), "page_no": document.get("page_no"),
-        "char_start": document.get("char_start"), "char_end": document.get("char_end"),
-        "version": document.get("version", ""), "effective_from": document.get("effective_from", ""),
+        "unit_id": document.get("unit_id"),
+        "source_id": document.get("source_id"),
+        "chunk_id": document["chunk_id"],
+        "doc_id": document["doc_id"],
+        "field": "content",
+        "value": document["content"],
+        "quoted_text": document["content"],
+        "source": document.get("source", ""),
+        "source_uri": document.get("source_uri", ""),
+        "section_path": document.get("section_path", ""),
+        "page_no": document.get("page_no"),
+        "char_start": document.get("char_start"),
+        "char_end": document.get("char_end"),
+        "version": document.get("version", ""),
+        "effective_from": document.get("effective_from", ""),
         "effective_to": document.get("effective_to", ""),
-        **({**document["asset_evidence"], "field": "content"} if document.get("asset_evidence") else {}),
+        **(
+            {**document["asset_evidence"], "field": "content"}
+            if document.get("asset_evidence")
+            else {}
+        ),
     }
 
 
 def rebuild_policy_claims(
-    statements: list[dict[str, Any]], documents: list[dict[str, Any]],
+    statements: list[dict[str, Any]],
+    documents: list[dict[str, Any]],
 ) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Rebuild every claim/citation for repaired text, then run normal Grounding.
 
@@ -95,7 +128,12 @@ def rebuild_policy_claims(
     for statement in statements:
         text = statement["text"].strip()
         ids = statement["chunk_ids"]
-        if not text or not ids or len(ids) != len(set(ids)) or not set(ids) <= set(by_id):
+        if (
+            not text
+            or not ids
+            or len(ids) != len(set(ids))
+            or not set(ids) <= set(by_id)
+        ):
             raise ValueError("invalid repair evidence mapping")
         lines.append(text)
         for cid in ids:
@@ -137,8 +175,12 @@ def _claim_text_supported(claim_text: str, source_value: Any, field: str) -> boo
         return True
     if field not in {"description", "content", "latest_logistics"}:
         return source in claim
-    source_tokens = {token for token in tokenize(source) if len(token) > 1 or token.isdigit()}
-    claim_tokens = {token for token in tokenize(claim) if len(token) > 1 or token.isdigit()}
+    source_tokens = {
+        token for token in tokenize(source) if len(token) > 1 or token.isdigit()
+    }
+    claim_tokens = {
+        token for token in tokenize(claim) if len(token) > 1 or token.isdigit()
+    }
     return len(source_tokens & claim_tokens) >= 2
 
 
@@ -168,12 +210,24 @@ def validate_claim_citations(
         citation_id = str(item.get("citation_id") or "")
         citation = citation_by_id.get(citation_id)
         if not citation:
-            issues.append({"index": index, "type": "unsupported_claim", "claim": item.get("claim")})
+            issues.append(
+                {
+                    "index": index,
+                    "type": "unsupported_claim",
+                    "claim": item.get("claim"),
+                }
+            )
             continue
         if item.get("field") != citation.get("field") or not _same_value(
             item.get("value"), citation.get("value")
         ):
-            issues.append({"index": index, "type": "citation_mismatch", "claim": item.get("claim")})
+            issues.append(
+                {
+                    "index": index,
+                    "type": "citation_mismatch",
+                    "claim": item.get("claim"),
+                }
+            )
             continue
 
         field = str(citation.get("field") or "")
@@ -184,28 +238,68 @@ def validate_claim_citations(
 
             document = document_by_chunk.get(str(citation.get("chunk_id") or ""))
             trusted = list(asset_sources or [])
-            if document and document.get("asset_evidence") and document.get("content") == value:
+            if (
+                document
+                and document.get("asset_evidence")
+                and document.get("content") == value
+            ):
                 trusted.append(document["asset_evidence"])
             entity = citation.get("sku") or citation.get("doc_id")
-            present = bool(citation.get("sku") in product_by_sku if citation.get("sku") else document)
-            wording = str(item.get("claim") or "")
-            supported_wording = wording == str(value) if field == "asset_content" else (
-                wording == str(value) or _claim_text_supported(wording, value, field)
+            present = bool(
+                citation.get("sku") in product_by_sku
+                if citation.get("sku")
+                else document
             )
-            if (not present or item.get("entity_id") != entity
-                    or not valid_asset_citation(citation, trusted) or not supported_wording):
-                issues.append({"index": index, "type": "unsupported_asset_claim", "claim": item.get("claim")})
+            wording = str(item.get("claim") or "")
+            supported_wording = (
+                wording == str(value)
+                if field == "asset_content"
+                else (
+                    wording == str(value)
+                    or _claim_text_supported(wording, value, field)
+                )
+            )
+            if (
+                not present
+                or item.get("entity_id") != entity
+                or not valid_asset_citation(citation, trusted)
+                or not supported_wording
+            ):
+                issues.append(
+                    {
+                        "index": index,
+                        "type": "unsupported_asset_claim",
+                        "claim": item.get("claim"),
+                    }
+                )
             continue
+        if citation.get("unit_id") and citation.get("doc_id"):
+            from .knowledge_evidence import hydrate
+
+            live = hydrate(citation["unit_id"])
+            if (
+                live is None
+                or live.doc_id != citation["doc_id"]
+                or (field == "content" and live.text_content != value)
+            ):
+                issues.append(
+                    {"index": index, "type": "citation_source_mismatch", "field": field}
+                )
+                continue
         if citation.get("sku"):
             product = product_by_sku.get(str(citation["sku"]))
             if not product:
-                issues.append({"index": index, "type": "citation_entity_missing", "entity": citation["sku"]})
+                issues.append(
+                    {
+                        "index": index,
+                        "type": "citation_entity_missing",
+                        "entity": citation["sku"],
+                    }
+                )
                 continue
-            if field == "features" and value not in product.get("features", []):
-                source_mismatch = True
-            elif field == "description" and str(value) not in str(product.get("description") or ""):
-                source_mismatch = True
-            elif field not in {"features", "description"} and not _same_value(
+            if field == "features" and value not in product.get("features", []) or field == "description" and str(value) not in str(
+                product.get("description") or ""
+            ) or field not in {"features", "description"} and not _same_value(
                 product.get(field), value
             ):
                 source_mismatch = True
@@ -214,22 +308,33 @@ def validate_claim_citations(
             if document is None and not citation.get("chunk_id"):
                 document = document_by_id.get(str(citation["doc_id"]))
             if not document:
-                issues.append({"index": index, "type": "citation_entity_missing", "entity": citation["doc_id"]})
+                issues.append(
+                    {
+                        "index": index,
+                        "type": "citation_entity_missing",
+                        "entity": citation["doc_id"],
+                    }
+                )
                 continue
             if str(document.get("doc_id")) != str(citation["doc_id"]):
                 source_mismatch = True
             elif field == "content":
-                if (
-                    str(value) != str(document.get("content"))
-                    or str(citation.get("quoted_text") or value) != str(value)
-                ):
+                if str(value) != str(document.get("content")) or str(
+                    citation.get("quoted_text") or value
+                ) != str(value):
                     source_mismatch = True
             elif not _same_value(document.get(field), value):
                 # Policy citations are no longer exempt from field/value checks.
                 source_mismatch = True
         elif citation.get("order_id"):
             if not order or str(order.get("order_id")) != str(citation["order_id"]):
-                issues.append({"index": index, "type": "citation_entity_missing", "entity": citation["order_id"]})
+                issues.append(
+                    {
+                        "index": index,
+                        "type": "citation_entity_missing",
+                        "entity": citation["order_id"],
+                    }
+                )
                 continue
             if field == "status":
                 source_mismatch = not _same_value(order.get("status"), value)
@@ -247,7 +352,12 @@ def validate_claim_citations(
                 {
                     "index": index,
                     "type": "citation_entity_missing",
-                    "entity": str(citation.get("sku") or citation.get("doc_id") or citation.get("order_id") or ""),
+                    "entity": str(
+                        citation.get("sku")
+                        or citation.get("doc_id")
+                        or citation.get("order_id")
+                        or ""
+                    ),
                 }
             )
             continue
@@ -280,7 +390,9 @@ def validate_claim_citations(
         "pass": not issues,
         "claims": len(claims),
         "citations": len(normalized),
-        "supported_claim_rate": round((len(claims) - len(issues)) / max(1, len(claims)), 4),
+        "supported_claim_rate": round(
+            (len(claims) - len(issues)) / max(1, len(claims)), 4
+        ),
         "failure_types": issue_types,
         "issues": issues,
     }

@@ -10,37 +10,30 @@ from dataclasses import replace
 from functools import lru_cache
 from typing import Any
 
-import numpy as np
-
+from .asset_config import asset_settings
+from .asset_evidence import meaningful_overlap, verify_image
 from .catalog import (
     format_price,
-    get_product,
     hydrate_product,
     interaction_scores,
     preference_map,
 )
 from .config import settings
 from .database import db_session, json_dumps
-from .embeddings import DenseRecall, get_neural_index
+from .knowledge_evidence import hydrate, public_hit
+from .knowledge_index import model_spec
+from .knowledge_index import version as knowledge_version
+from .knowledge_retrieval import (
+    RetrievalFilters,
+    RetrievalQuery,
+    aggregate_skus,
+    retrieve,
+)
 from .query import parse_query
 from .schemas import ParsedQuery
 from .taxonomy import correction_candidates
-from .asset_config import asset_settings
-from .asset_evidence import public_evidence, meaningful_overlap
-from .asset_retrieval import aggregate_routes, retrieve_product_assets
-from .text import fast_catalog_tokens, hash_vector, tokenize, vector_from_blob
+from .text import fast_catalog_tokens, tokenize
 
-
-RRF_K = 60
-ROUTE_WEIGHTS = {
-    "fts": 0.42,
-    "dense": 0.28,
-    "popular": 0.12,
-    "personal": 0.18,
-    "asset_bm25": 0.26,
-    "asset_text": 0.16,
-    "asset_visual": 0.24,
-}
 TITLE_SCOPED_NEGATIVE_TERMS = {
     "in ear",
     "in-ear",
@@ -55,9 +48,7 @@ def _group_filter_terms(group: list[str]) -> list[str]:
     return precise or group
 
 
-def _sql_filters(
-    parsed: ParsedQuery, *, level: str = "hard"
-) -> tuple[str, list[Any]]:
+def _sql_filters(parsed: ParsedQuery, *, level: str = "hard") -> tuple[str, list[Any]]:
     """Build either reliable hard filters or the legacy strict text filter.
 
     Neural/BM25 recall must see the hard pool. Product-type aliases, raw text
@@ -127,40 +118,6 @@ def _fts_expression(text: str) -> str:
     tokens = list(dict.fromkeys(tokenize(text)))[:28]
     safe = [token.replace('"', '""') for token in tokens if token]
     return " OR ".join(f'"{token}"' for token in safe)
-
-
-def _fts_recall(parsed: ParsedQuery, limit: int = 240) -> list[str]:
-    # 业界 agentic search（Algolia 等）：LLM 生成的检索词是唯一召回来源。
-    # 原文 query 不进 FTS（带"推荐/给老子/个"等动词废话，污染匹配）；
-    # 也没有原文兜底路径——LLM 失效时意图层直接返回空任务，不会走到检索。
-    # 无检索词时返回空结果，由上层默认回复兜底。
-    expression = _fts_expression(
-        " ".join(
-            [
-                *parsed.grounded_target_terms,
-                *parsed.llm_concepts,
-            ]
-        )
-    )
-    if not expression:
-        return []
-    where, params = _sql_filters(parsed, level="hard")
-    with db_session() as connection:
-        rows = connection.execute(
-            f"""
-            SELECT p.sku, bm25(product_fts, 0.0, 5.0, 3.0, 2.0, 2.0, 1.0, 1.5) AS rank
-            FROM product_fts
-            JOIN products p ON p.sku = product_fts.sku
-            LEFT JOIN product_commerce c ON c.sku = p.sku
-            WHERE product_fts MATCH ? AND {where}
-            AND COALESCE(c.dataset_split, '') != 'final'
-            AND p.source != 'Amazon Reviews 2023'
-            ORDER BY rank
-            LIMIT ?
-            """,
-            [expression, *params, limit],
-        ).fetchall()
-    return [row["sku"] for row in rows]
 
 
 def _structured_skus(
@@ -239,7 +196,9 @@ def _open_query_features(raw_query: str) -> tuple[tuple[str, ...], frozenset[str
     return runs, terms
 
 
-def _catalog_lexical_evidence(parsed: ParsedQuery, product: dict[str, Any]) -> dict[str, Any]:
+def _catalog_lexical_evidence(
+    parsed: ParsedQuery, product: dict[str, Any]
+) -> dict[str, Any]:
     """Require coherent catalog evidence before an open long-tail query is admitted."""
     target = " ".join(
         [
@@ -274,7 +233,9 @@ def _catalog_lexical_evidence(parsed: ParsedQuery, product: dict[str, Any]) -> d
         "pass": passed,
         "matched_fourgrams": sorted(matched_four)[:8],
         "matched_trigrams": sorted(matched_three)[:12],
-        "matched_terms": sorted(matched_terms, key=lambda value: (-len(value), value))[:12],
+        "matched_terms": sorted(matched_terms, key=lambda value: (-len(value), value))[
+            :12
+        ],
     }
 
 
@@ -288,112 +249,6 @@ def _needs_product_anchor(parsed: ParsedQuery) -> bool:
             parsed.sources.get("catalog_anchor"),
         )
     )
-
-
-def _pool_with_relaxation(
-    parsed: ParsedQuery,
-) -> tuple[list[str], ParsedQuery, list[dict[str, Any]]]:
-    # Compatibility boundary: relaxation now happens after sparse/dense recall,
-    # so semantic candidates are not deleted before they can be scored.
-    return _structured_skus(parsed, level="hard"), parsed, []
-
-
-_HASH_INDEX: tuple[str, list[str], dict[str, int], np.ndarray] | None = None
-
-
-def _hash_index() -> tuple[list[str], dict[str, int], np.ndarray]:
-    global _HASH_INDEX
-    cache_key = str(settings.database_path.resolve())
-    if _HASH_INDEX is not None and _HASH_INDEX[0] == cache_key:
-        return _HASH_INDEX[1], _HASH_INDEX[2], _HASH_INDEX[3]
-    with db_session() as connection:
-        rows = connection.execute(
-            "SELECT sku, dim, vector FROM product_vectors ORDER BY sku"
-        ).fetchall()
-    skus = [row["sku"] for row in rows]
-    matrix = (np.vstack([vector_from_blob(row['vector'], int(row['dim'])) for row in rows])
-              if rows else np.empty((0, settings.vector_dim), dtype=np.float32))
-    sku_to_index = {sku: index for index, sku in enumerate(skus)}
-    _HASH_INDEX = (cache_key, skus, sku_to_index, matrix)
-    return skus, sku_to_index, matrix
-
-
-def _dense_recall_result(
-    parsed: ParsedQuery, candidate_skus: list[str], limit: int = 240
-) -> DenseRecall:
-    if not candidate_skus:
-        return DenseRecall([], {}, "hash-flat", "stable-hash-384", "hash-v1", False)
-    # 向量召回保留原文 query（embedding 天然容忍动词/废话，且提供中文侧语义）；
-    # LLM 生成的检索词补充标准词。rewritten_query 与 raw_query 同值，不重复拼。
-    query_text = " ".join(
-        [
-            parsed.raw_query,
-            *parsed.grounded_target_terms,
-            *parsed.llm_concepts,
-        ]
-    )
-    fallback_reason = ""
-    try:
-        neural = get_neural_index()
-        if neural is not None:
-            return neural.recall(query_text, candidate_skus, limit)
-    except Exception as exc:
-        # This is an optional third-party boundary: missing weights, a copied
-        # but incompatible index, or unavailable CUDA must not take search
-        # down. The reason is exposed in trace instead of being silently lost.
-        fallback_reason = f"{type(exc).__name__}: {str(exc)[:240]}"
-    query_vector = hash_vector(
-        query_text
-    )
-    _, sku_to_index, matrix = _hash_index()
-    pairs = [
-        (sku, sku_to_index[sku])
-        for sku in candidate_skus
-        if sku in sku_to_index
-    ]
-    if not pairs:
-        return DenseRecall(
-            [], {}, "hash-flat", "stable-hash-384", "hash-v1", False, fallback_reason
-        )
-    indices = np.fromiter((index for _, index in pairs), dtype=np.int64)
-    scores = matrix[indices] @ query_vector
-    top_n = min(limit, len(scores))
-    if top_n < len(scores):
-        top = np.argpartition(-scores, top_n - 1)[:top_n]
-        order = top[np.argsort(-scores[top])]
-    else:
-        order = np.argsort(-scores)
-    ranks = [pairs[int(index)][0] for index in order]
-    score_map = {
-        pairs[int(index)][0]: float(max(0.0, scores[int(index)])) for index in order
-    }
-    return DenseRecall(
-        ranks,
-        score_map,
-        "hash-flat",
-        "stable-hash-384",
-        "hash-v1",
-        False,
-        fallback_reason,
-    )
-
-
-def _dense_recall(
-    parsed: ParsedQuery, candidate_skus: list[str], limit: int = 240
-) -> tuple[list[str], dict[str, float]]:
-    result = _dense_recall_result(parsed, candidate_skus, limit)
-    return result.ranking, result.scores
-
-
-def _popular_recall(pool: list[dict[str, Any]], limit: int = 240) -> list[str]:
-    ranked = sorted(
-        pool,
-        key=lambda row: (
-            float(row["quality_score"]) * 0.65 + float(row["popularity_score"]) * 0.35
-        ),
-        reverse=True,
-    )
-    return [row["sku"] for row in ranked[:limit]]
 
 
 def _preference_score(
@@ -446,16 +301,9 @@ def _personal_recall(
     return ranked, combined
 
 
-def _rrf(routes: dict[str, list[str]]) -> dict[str, float]:
-    scores: dict[str, float] = defaultdict(float)
-    for route, ranking in routes.items():
-        weight = ROUTE_WEIGHTS.get(route, 0.0)
-        for rank, sku in enumerate(ranking, start=1):
-            scores[sku] += weight / (RRF_K + rank)
-    return dict(scores)
-
-
-def _term_match_score(parsed: ParsedQuery, product: dict[str, Any]) -> tuple[float, list[str]]:
+def _term_match_score(
+    parsed: ParsedQuery, product: dict[str, Any]
+) -> tuple[float, list[str]]:
     # category 是脏标签（Amazon 数据常把无关商品错标进一个大类，如调料被标成
     # Cell Phones & Accessories），不能作为"内容匹配"证据：category 含 "Phone"
     # 会让错标调料命中 "phone"。匹配只应基于真实内容（title/brand/description/
@@ -469,7 +317,9 @@ def _term_match_score(parsed: ParsedQuery, product: dict[str, Any]) -> tuple[flo
             product["attributes_text"][:1600],
         ]
     ).lower()
-    negative_tokens = set(tokenize(" ".join(parsed.negative_terms), include_expansion=False))
+    negative_tokens = set(
+        tokenize(" ".join(parsed.negative_terms), include_expansion=False)
+    )
     llm_concept_values = {term.casefold() for term in parsed.llm_concepts}
     deterministic_concepts = [
         term for term in parsed.concepts if term.casefold() not in llm_concept_values
@@ -492,9 +342,7 @@ def _term_match_score(parsed: ParsedQuery, product: dict[str, Any]) -> tuple[flo
     ]
     llm_terms = [
         term
-        for term in list(
-            dict.fromkeys(tokenize(" ".join(parsed.llm_concepts)))
-        )[:16]
+        for term in list(dict.fromkeys(tokenize(" ".join(parsed.llm_concepts))))[:16]
         if term not in negative_tokens and term not in primary_terms
     ]
     lexical_terms = [
@@ -532,19 +380,18 @@ def _passes_non_relaxable_constraints(
     ).casefold()
     if any(term.casefold() in title for term in parsed.excluded_title_terms):
         return False
-    asset_text = ' '.join(item.get('text_content', '') for item in product.get('asset_evidence') or []).casefold()
+    asset_text = " ".join(
+        item.get("text_content", "") for item in product.get("asset_evidence") or []
+    ).casefold()
     for term in parsed.negative_terms[:8]:
-        target = title if term.casefold() in TITLE_SCOPED_NEGATIVE_TERMS else f'{searchable} {asset_text}'
+        target = (
+            title
+            if term.casefold() in TITLE_SCOPED_NEGATIVE_TERMS
+            else f"{searchable} {asset_text}"
+        )
         if term.casefold() in target:
             return False
     return True
-
-
-def _semantic_threshold(model_name: str) -> float:
-    threshold = settings.embedding_min_score
-    if "e5" in model_name.casefold() and threshold <= 0.5:
-        return 0.75
-    return threshold
 
 
 def _must_have_score(parsed: ParsedQuery, product: dict[str, Any]) -> float:
@@ -558,10 +405,14 @@ def _must_have_score(parsed: ParsedQuery, product: dict[str, Any]) -> float:
             product["attributes_text"][:1600],
         ]
     ).lower()
-    if product.get('asset_evidence'):
-        haystack += ' ' + ' '.join(
-            item.get('text_content', '') for item in product['asset_evidence']
-        ).lower()
+    haystack += " " + product.get("visual_observation", "").lower()
+    if product.get("asset_evidence"):
+        haystack += (
+            " "
+            + " ".join(
+                item.get("text_content", "") for item in product["asset_evidence"]
+            ).lower()
+        )
     matched = sum(
         1
         for group in parsed.must_have_groups
@@ -573,14 +424,11 @@ def _must_have_score(parsed: ParsedQuery, product: dict[str, Any]) -> float:
 def _apply_candidate_policy(
     parsed: ParsedQuery,
     products: list[dict[str, Any]],
-    dense: DenseRecall,
     limit: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     non_relaxable: list[dict[str, Any]] = []
-    semantic_threshold = _semantic_threshold(dense.model)
     for product in products:
-        dense_score = dense.scores.get(product["sku"], -1.0)
-        semantic_match = dense.semantic and dense_score >= semantic_threshold
+        semantic_match = bool(product.get("knowledge_evidence"))
         product["constraint_profile"] = {
             "non_relaxable_pass": _passes_non_relaxable_constraints(parsed, product),
             "semantic_match": semantic_match,
@@ -653,7 +501,7 @@ def _score_candidates(
     personal_scores: dict[str, float],
     mode: str,
 ) -> list[dict[str, Any]]:
-    fused = _rrf(routes)
+    fused = routes
     max_fused = max(fused.values(), default=1.0)
     interaction = (
         interaction_scores(user_id, list(pool_by_sku)) if mode == "hybrid" else {}
@@ -664,8 +512,9 @@ def _score_candidates(
         if row is None:
             continue
         product = hydrate_product(row)
-        if row.get('asset_evidence'):
-            product['asset_evidence'] = row['asset_evidence']
+        product["knowledge_evidence"] = row.get("knowledge_evidence", [])
+        product["visual_observation"] = row.get("visual_observation", "")
+        product["asset_evidence"] = row.get("asset_evidence", [])
         match_score, matched_terms = _term_match_score(parsed, product)
         quality = float(product["quality_score"])
         popularity = float(product["popularity_score"])
@@ -674,8 +523,7 @@ def _score_candidates(
                 -1.0,
                 min(
                     1.0,
-                    personal_scores.get(sku, 0.0)
-                    + interaction.get(sku, 0.0) * 0.2,
+                    personal_scores.get(sku, 0.0) + interaction.get(sku, 0.0) * 0.2,
                 ),
             )
             if mode == "hybrid"
@@ -737,12 +585,18 @@ def _diversify(
         best_adjusted = -10.0
         for product in candidates:
             brand_penalty = sum(
-                0.035 for existing in selected if existing["brand"] and existing["brand"] == product["brand"]
+                0.035
+                for existing in selected
+                if existing["brand"] and existing["brand"] == product["brand"]
             )
             category_penalty = (
                 0
                 if single_category
-                else sum(0.02 for existing in selected if existing["category"] == product["category"])
+                else sum(
+                    0.02
+                    for existing in selected
+                    if existing["category"] == product["category"]
+                )
             )
             adjusted = float(product["score"]) - brand_penalty - category_penalty
             if adjusted > best_adjusted:
@@ -755,7 +609,9 @@ def _diversify(
     return selected
 
 
-def _reason(parsed: ParsedQuery, product: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+def _reason(
+    parsed: ParsedQuery, product: dict[str, Any]
+) -> tuple[str, list[dict[str, Any]]]:
     pieces: list[str] = []
     citations: list[dict[str, Any]] = []
     if product["matched_terms"]:
@@ -763,11 +619,15 @@ def _reason(parsed: ParsedQuery, product: dict[str, Any]) -> tuple[str, list[dic
     must_have = float(product.get("score_breakdown", {}).get("must_have", 1.0))
     if parsed.must_have_groups and must_have < 1.0:
         matched = round(must_have * len(parsed.must_have_groups))
-        pieces.append(f"近似候选，命中 {matched}/{len(parsed.must_have_groups)} 组关键属性")
+        pieces.append(
+            f"近似候选，命中 {matched}/{len(parsed.must_have_groups)} 组关键属性"
+        )
     if product["brand"] in parsed.preferred_brands:
         pieces.append(f"品牌符合偏好 {product['brand']}")
     if product["rating"]:
-        pieces.append(f"评分 {product['rating']:.1f}，共 {product['rating_count']} 条评价")
+        pieces.append(
+            f"评分 {product['rating']:.1f}，共 {product['rating_count']} 条评价"
+        )
         citations.append(
             {
                 "sku": product["sku"],
@@ -805,11 +665,15 @@ def _reason(parsed: ParsedQuery, product: dict[str, Any]) -> tuple[str, list[dic
         )
     if parsed.price_max is not None:
         budget_currency = str(product.get("currency") or "USD")
-        pieces.append(f"符合不超过 {format_price(parsed.price_max, budget_currency)} 的预算")
+        pieces.append(
+            f"符合不超过 {format_price(parsed.price_max, budget_currency)} 的预算"
+        )
     return "；".join(pieces[:4]), citations
 
 
-def validate_citations(product: dict[str, Any], citations: list[dict[str, Any]]) -> dict[str, Any]:
+def validate_citations(
+    product: dict[str, Any], citations: list[dict[str, Any]]
+) -> dict[str, Any]:
     issues: list[str] = []
     for citation in citations:
         field = citation["field"]
@@ -888,7 +752,9 @@ def _sampling_reasons(result: dict[str, Any]) -> list[str]:
             reasons.append("route_disagreement")
     if float(result.get("latency_ms") or 0.0) >= 1000:
         reasons.append("high_latency")
-    digest = int(hashlib.blake2b(result["request_id"].encode(), digest_size=4).hexdigest(), 16)
+    digest = int(
+        hashlib.blake2b(result["request_id"].encode(), digest_size=4).hexdigest(), 16
+    )
     if digest / 0xFFFFFFFF < settings.eval_sample_rate:
         reasons.append("random_sample")
     return list(dict.fromkeys(reasons))
@@ -934,277 +800,212 @@ class SearchEngine:
                 }
             )
 
-        asset_started = time.perf_counter()
-        asset_routes, asset_hits, asset_errors = {}, {}, {}
-        if asset_settings.enabled:
-            where, params = _sql_filters(parsed)
-            if (parsed.price_min is not None and parsed.sources.get('catalog_scope') == 'domestic_cny'
-                    and parsed.sources.get('price_constraint') != 'soft:approximate'):
-                where += ' AND p.price >= ?'
-                params.append(parsed.price_min)
-            rankings, asset_errors = retrieve_product_assets(
-                parsed.raw_query, where=where, params=params, dense=mode == 'hybrid',
-                visual=mode == 'hybrid',
+        where, params = _sql_filters(parsed)
+        where += " AND p.stock > 0"
+        for term in parsed.excluded_title_terms:
+            where += " AND LOWER(p.title) NOT LIKE ?"
+            params.append("%" + term.casefold() + "%")
+        for term in parsed.negative_terms[:8]:
+            where += " AND LOWER(p.title || ' ' || p.description || ' ' || p.attributes_text) NOT LIKE ?"
+            params.append("%" + term.casefold() + "%")
+        filters = RetrievalFilters(product_where=where, product_params=params)
+        retrieval_text = " ".join(
+            dict.fromkeys(
+                [parsed.raw_query, *parsed.grounded_target_terms, *parsed.llm_concepts]
             )
-            asset_routes, asset_hits = aggregate_routes(rankings)
-            scoped = {
-                row['sku'] for row in _products_for_skus(list(asset_hits))
-                if _passes_non_relaxable_constraints(parsed, row) and row['stock'] > 0
-            }
-            asset_hits = {
-                sku: hydrated for sku, hits in asset_hits.items() if sku in scoped
-                if (hydrated := [item for hit in hits if (item := public_evidence(hit))])
-            }
-            asset_routes = {
-                key: [sku for sku in skus if sku in asset_hits]
-                for key, skus in asset_routes.items()
-            }
-            # A weak nearest neighbour alone cannot clear the open-query guard.
-            if _needs_product_anchor(parsed):
-                anchors = {
-                    sku for sku, evidence in asset_hits.items()
-                    if any(meaningful_overlap(parsed.raw_query,
-                                              item['text_content'] + ' ' + item['matched_description'])
-                           for item in evidence)
-                }
-                asset_routes = {key: [sku for sku in skus if sku in anchors]
-                                for key, skus in asset_routes.items()}
-                asset_hits = {sku: hits for sku, hits in asset_hits.items() if sku in anchors}
-            stage_timings['asset_recall'] = (time.perf_counter() - asset_started) * 1000
-            trace.append({'node': 'asset_recall', 'routes': {key: len(value) for key, value in asset_routes.items()},
-                          'degradations': asset_errors})
-
-        seeded_fts: list[str] | None = None
-        seeded_skus: list[str] | None = None
-        guard_started = time.perf_counter()
-        if _needs_product_anchor(parsed):
-            open_fts = _fts_recall(parsed, limit=240)
-            open_rows = _products_for_skus(open_fts)
-            evidence_by_sku = {
-                row["sku"]: _catalog_lexical_evidence(parsed, row) for row in open_rows
-            }
-            seeded_fts = [
-                sku for sku in open_fts if evidence_by_sku.get(sku, {}).get("pass")
-            ]
-            seeded_skus = list(dict.fromkeys([*seeded_fts, *asset_hits]))
-            if seeded_skus:
-                parsed = replace(
-                    parsed,
-                    clarification_slot=None,
-                    clarification_question=None,
-                    confidence=max(parsed.confidence, 0.8),
-                    sources={**parsed.sources, "catalog_anchor": "fts:lexical_evidence" if seeded_fts else "asset:evidence"},
-                )
-                trace.append(
-                    {
-                        "node": "query_guard",
-                        "blocked": False,
-                        "reason": "catalog_lexical_evidence" if seeded_fts else "asset_evidence",
-                        "fts_candidates": len(open_fts),
-                        "grounded_candidates": len(seeded_fts),
-                    }
-                )
-        stage_timings["query_guard"] = (time.perf_counter() - guard_started) * 1000
-        if _needs_product_anchor(parsed):
-            latency_ms = (time.perf_counter() - started) * 1000
-            trace.append(
+        )
+        business_browse = parsed.raw_query.strip() in {
+            "推荐热门商品",
+            "随便看看",
+            "热门商品",
+        }
+        if business_browse:
+            hits, unit_routes, knowledge_trace = (
+                [],
+                {},
                 {
-                    "node": "stage_timings",
-                    "timings_ms": {
-                        key: round(value, 2) for key, value in stage_timings.items()
-                    },
-                }
+                    "latency_ms": 0.0,
+                    "unit_counts": {},
+                    "errors": {},
+                    "business_only": True,
+                },
             )
-            trace.append(
-                {
-                    "node": "query_guard",
-                    "blocked": True,
-                    "reason": "missing_product_anchor",
-                }
-            )
-            result = {
-                "request_id": request_id,
-                "query": parsed.raw_query,
-                "parsed_query": parsed.to_dict(),
-                "total_candidates": 0,
-                "products": [],
-                "facets": {},
-                "suggestions": [
-                    "笔记本电脑",
-                    "无线耳机",
-                    "护肤品",
-                    "运动装备",
-                ],
-                "trace": trace,
-                "latency_ms": round(latency_ms, 2),
-                "judge": {"pass": True, "issues": []},
-                "relaxations": [],
-                "mode": mode,
-            }
-            self._log(result, user_id, session_id, mode)
-            return result
-
-        filter_started = time.perf_counter()
-        if seeded_skus is not None:
-            candidate_skus, recall_query, relaxations = seeded_skus, parsed, []
         else:
-            candidate_skus, recall_query, relaxations = _pool_with_relaxation(parsed)
-        candidate_skus = list(dict.fromkeys([*candidate_skus, *asset_hits]))
-        stage_timings["structured_filter"] = (
-            time.perf_counter() - filter_started
-        ) * 1000
+            hits, unit_routes, knowledge_trace = retrieve(
+                RetrievalQuery(retrieval_text, "product"),
+                filters,
+                limit=240,
+                methods=("knowledge_bm25",) if mode == "fts" else None,
+            )
+        grouped = aggregate_skus(hits, evidence_limit=asset_settings.evidence_per_sku)
+        pool_by_sku = {row["sku"]: row for row in _products_for_skus(list(grouped))}
+        visual_by_id = {
+            hit.unit_id: hit for hit in unit_routes.get("knowledge_visual", [])
+        }
+        grouped = {sku: group for sku, group in grouped.items() if sku in pool_by_sku}
+        anchors = {}
+        verify_calls = 0
+        with db_session() as evidence_db:
+            evidence_by_sku = {
+                sku: [
+                    item
+                    for hit in group["hits"]
+                    if (item := public_hit(hit, db=evidence_db))
+                ]
+                for sku, group in grouped.items()
+            }
+        for sku, group in grouped.items():
+            evidence = evidence_by_sku[sku]
+            pool_by_sku[sku]["knowledge_evidence"] = evidence
+            pool_by_sku[sku]["asset_evidence"] = [
+                item for item in evidence if item.get("asset_id")
+            ]
+            product = pool_by_sku[sku]
+            structured_anchor = bool(
+                parsed.category or parsed.brands or parsed.reference_skus
+            )
+            text_anchor = any(
+                meaningful_overlap(
+                    parsed.raw_query,
+                    item["text_content"] + " " + item["matched_description"],
+                )
+                for item in evidence
+            )
+            visual_anchor = False
+            if not text_anchor:
+                for hit in group["hits"]:
+                    visual_hit = visual_by_id.get(hit.unit_id)
+                    if visual_hit is None:
+                        continue
+                    package = hydrate(hit.unit_id)
+                    # A caption-free visual candidate requires original-image verification.
+                    if package and verify_calls < asset_settings.verification_images:
+                        verify_calls += 1
+                        observation = verify_image(package, parsed.raw_query)
+                        if observation:
+                            visual_anchor = True
+                            product["visual_observation"] = observation
+                            break
+            visual_only = all(
+                set(hit.metadata.get("source_ranks", {})) <= {"knowledge_visual"}
+                for hit in group["hits"]
+            )
+            if (
+                visual_anchor
+                if visual_only
+                else (structured_anchor or text_anchor or visual_anchor)
+            ):
+                anchors[sku] = (
+                    "visual"
+                    if visual_anchor
+                    else "text"
+                    if text_anchor
+                    else "structured"
+                )
+        grouped = {
+            sku: group
+            for sku, group in grouped.items()
+            if sku in anchors
+            or not all(
+                set(hit.metadata.get("source_ranks", {})) <= {"knowledge_visual"}
+                for hit in group["hits"]
+            )
+        }
+        pool_by_sku = {sku: row for sku, row in pool_by_sku.items() if sku in grouped}
+        guarded = _needs_product_anchor(parsed)
+        if guarded:
+            grouped = {sku: group for sku, group in grouped.items() if sku in anchors}
+            pool_by_sku = {
+                sku: row for sku, row in pool_by_sku.items() if sku in grouped
+            }
+        if grouped and guarded:
+            parsed = replace(
+                parsed,
+                clarification_slot=None,
+                clarification_question=None,
+                sources={**parsed.sources, "catalog_anchor": "knowledge:evidence"},
+            )
+        trace.append(
+            {
+                "node": "query_guard",
+                "blocked": guarded and not grouped,
+                "reason": "knowledge_anchor" if grouped else "missing_product_anchor",
+                "anchors": anchors,
+            }
+        )
+        # Explicit browse requests use business candidates; no semantic route is invented.
+        browse = (
+            parsed.intent
+            in {
+                "recommend",
+                "browse",
+            }
+            or business_browse
+        )
+        if not grouped and browse:
+            candidates = _products_for_skus(_structured_skus(parsed, limit=100))
+            pool_by_sku = {row["sku"]: row for row in candidates if row["stock"] > 0}
+            grouped = {sku: {"score": 1.0, "hits": []} for sku in pool_by_sku}
+        candidate_skus = list(grouped)
+        stage_timings["knowledge_retrieval"] = knowledge_trace["latency_ms"]
         trace.append(
             {
                 "node": "structured_filter",
                 "count": len(candidate_skus),
                 "policy": "hard_only",
-                "filters": {
-                    "category": parsed.category,
-                    "price_min": parsed.price_min,
-                    "price_max": parsed.price_max,
-                    "brands": parsed.brands,
-                    "preferred_brands": parsed.preferred_brands,
-                    "negative_brands": parsed.negative_brands,
-                    "grounded_target_terms": parsed.grounded_target_terms,
-                    "llm_concepts": parsed.llm_concepts,
-                    "excluded_title_terms": parsed.excluded_title_terms,
-                    "must_have_groups": parsed.must_have_groups,
-                },
-                "deferred_to_candidate_policy": {
-                    "excluded_title_terms": parsed.excluded_title_terms,
-                    "must_have_groups": parsed.must_have_groups,
-                    "negative_terms": parsed.negative_terms[:8],
-                },
-                "relaxations": relaxations,
             }
         )
-        if not candidate_skus:
-            latency_ms = (time.perf_counter() - started) * 1000
-            trace.append(
-                {
-                    "node": "stage_timings",
-                    "timings_ms": {
-                        key: round(value, 2) for key, value in stage_timings.items()
-                    },
-                }
-            )
-            result = {
-                "request_id": request_id,
-                "query": parsed.raw_query,
-                "parsed_query": parsed.to_dict(),
-                "total_candidates": 0,
-                "products": [],
-                "facets": {},
-                "suggestions": ["放宽预算", "换一个类目或关键词"],
-                "trace": trace,
-                "latency_ms": round(latency_ms, 2),
-                "judge": {"pass": True, "issues": []},
-                "relaxations": relaxations,
-            }
-            self._log(result, user_id, session_id, mode)
-            return result
-
-        fts_query = replace(
-            recall_query,
-            rewritten_query=" ".join(
-                [recall_query.rewritten_query, *parsed.grounded_target_terms]
-            ).strip(),
-        )
-        fts_started = time.perf_counter()
-        fts = seeded_fts if seeded_fts is not None else _fts_recall(fts_query)
-        stage_timings["fts_recall"] = (time.perf_counter() - fts_started) * 1000
-        dense_started = time.perf_counter()
-        if mode == "hybrid":
-            dense_result = _dense_recall_result(parsed, candidate_skus)
-            dense, dense_scores = dense_result.ranking, dense_result.scores
-        else:
-            dense_result = DenseRecall(
-                [], {}, "disabled", "disabled", "disabled", False
-            )
-            dense, dense_scores = [], {}
-        stage_timings["dense_recall"] = (time.perf_counter() - dense_started) * 1000
-
-        # Sparse/dense recall returns only identifiers. Hydrate the bounded
-        # union once, then compute popularity and personalization inside that
-        # relevant set so neither route scans the full hard-filtered catalogue.
-        recall_scores = _rrf({"fts": fts, "dense": dense, **asset_routes})
-        recalled_skus = sorted(
-            recall_scores,
-            key=lambda sku: (-recall_scores[sku], sku),
-        )[:300]
-        fetch_started = time.perf_counter()
-        pool = _products_for_skus(recalled_skus)
-        pool_by_sku = {row['sku']: {**row, 'asset_evidence': asset_hits[row['sku']]}
-                       if row['sku'] in asset_hits else row for row in pool}
-        stage_timings["candidate_payload_fetch"] = (
-            time.perf_counter() - fetch_started
-        ) * 1000
-
-        feature_started = time.perf_counter()
-        popular = _popular_recall(pool)
-        if mode == "hybrid":
-            personal, personal_scores = _personal_recall(user_id, parsed, pool)
-        else:
-            personal, personal_scores = [], {}
-        stage_timings["candidate_features"] = (
-            time.perf_counter() - feature_started
-        ) * 1000
-        routes = {
-            "fts": fts,
-            "dense": dense if mode == "hybrid" else [],
-            "popular": popular,
-            "personal": personal if mode == "hybrid" else [],
-            **asset_routes,
-        }
         trace.append(
             {
                 "node": "multi_recall",
-                "routes": {name: len(ranking) for name, ranking in routes.items()},
-                "top_skus": {name: ranking[:100] for name, ranking in routes.items()},
-                "dense_backend": dense_result.backend,
-                "embedding_model": dense_result.model,
-                "embedding_index_version": dense_result.index_version,
-                "semantic_dense": dense_result.semantic,
-                "dense_fallback_reason": dense_result.fallback_reason,
+                "routes": {name: len(route) for name, route in unit_routes.items()},
+                "unit_ids": {
+                    name: [hit.unit_id for hit in route[:100]]
+                    for name, route in unit_routes.items()
+                },
+                "degradations": knowledge_trace["errors"],
             }
         )
-
-        rank_started = time.perf_counter()
+        _personal, personal_scores = (
+            _personal_recall(user_id, parsed, list(pool_by_sku.values()))
+            if mode == "hybrid"
+            else ([], {})
+        )
+        routes = {
+            name: [hit.unit_id for hit in route] for name, route in unit_routes.items()
+        }
+        dense_scores = {}
         scored_before_gate = _score_candidates(
             parsed,
             user_id,
             pool_by_sku,
-            routes,
+            {sku: group["score"] for sku, group in grouped.items()},
             dense_scores,
             personal_scores,
             mode,
         )
-        scored, policy_relaxations, funnel = _apply_candidate_policy(
-            parsed, scored_before_gate, dense_result, limit
+        scored, relaxations, funnel = _apply_candidate_policy(
+            parsed, scored_before_gate, limit
         )
-        relaxations.extend(policy_relaxations)
         trace.append(
             {
                 "node": "candidate_policy",
                 "before": len(scored_before_gate),
                 "after": len(scored),
-                "dropped": len(scored_before_gate) - len(scored),
-                "grounded_target_terms": parsed.grounded_target_terms,
                 "funnel": funnel,
-                "relaxations": policy_relaxations,
+                "relaxations": relaxations,
             }
         )
         trace.append(
             {
                 "node": "relevance_gate",
-                "before": funnel["non_relaxable_pass"],
-                "after": funnel["relevance_pass"],
-                "dropped": funnel["non_relaxable_pass"] - funnel["relevance_pass"],
-                "grounded_target_terms": parsed.grounded_target_terms,
-                "semantic_dense": dense_result.semantic,
-                "dense_fallback_reason": dense_result.fallback_reason,
+                "before": len(scored_before_gate),
+                "after": len(scored),
+                "dropped": len(scored_before_gate) - len(scored),
             }
         )
+        rank_started = time.perf_counter()
+        asset_errors = knowledge_trace["errors"]
         selected = _diversify(scored, limit, single_category=bool(parsed.category))
         all_citations: list[dict[str, Any]] = []
         judge_issues: list[str] = []
@@ -1224,9 +1025,7 @@ class SearchEngine:
                 "top_scores": [item["score"] for item in selected[:5]],
             }
         )
-        stage_timings["rank_and_ground"] = (
-            time.perf_counter() - rank_started
-        ) * 1000
+        stage_timings["rank_and_ground"] = (time.perf_counter() - rank_started) * 1000
         trace.append(
             {
                 "node": "stage_timings",
@@ -1251,23 +1050,30 @@ class SearchEngine:
             "relaxations": relaxations,
             "retrieval": {
                 "routes": {name: ranking[:100] for name, ranking in routes.items()},
+                "unit_to_sku": {hit.unit_id: hit.metadata["sku"] for hit in hits},
+                "knowledge": knowledge_trace,
                 "route_scores": {
-                    "dense": {
-                        sku: round(float(dense_scores.get(sku, 0.0)), 6)
-                        for sku in dense[:100]
+                    name: {
+                        hit.unit_id: round(float(hit.score), 6) for hit in route[:100]
                     }
+                    for name, route in unit_routes.items()
                 },
                 "raw_candidate_ranking": [
                     item["sku"] for item in scored_before_gate[:100]
                 ],
                 "candidate_ranking": [item["sku"] for item in scored[:100]],
-                "dense_backend": dense_result.backend,
-                "embedding_model": dense_result.model,
-                "embedding_index_version": dense_result.index_version,
-                "semantic_dense": dense_result.semantic,
-                "dense_fallback_reason": dense_result.fallback_reason,
+                "dense_backend": "knowledge",
+                "embedding_model": model_spec("product")[0],
+                "embedding_index_version": knowledge_version("product"),
+                "semantic_dense": bool(unit_routes.get("knowledge_dense"))
+                and model_spec("product")[0] not in {"disabled", "hash"},
+                "dense_fallback_reason": str(knowledge_trace["errors"]),
                 "candidate_funnel": funnel,
-                **({'asset_retrieval_status': asset_errors} if asset_settings.enabled else {}),
+                **(
+                    {"asset_retrieval_status": asset_errors}
+                    if asset_settings.enabled
+                    else {}
+                ),
             },
             "mode": mode,
         }
@@ -1307,7 +1113,7 @@ class SearchEngine:
                             result["request_id"],
                             route,
                             rank,
-                            sku,
+                            (retrieval.get("unit_to_sku") or {}).get(sku, sku),
                             scores.get(sku),
                             str(retrieval.get("embedding_index_version") or ""),
                         )
@@ -1396,5 +1202,7 @@ def search(
         parsed.category = category
     if price_max is not None:
         parsed.price_max = price_max
-    result = search_engine.search(parsed, user_id=(profile or {}).get("user_id", "demo-user"), limit=top_k)
+    result = search_engine.search(
+        parsed, user_id=(profile or {}).get("user_id", "demo-user"), limit=top_k
+    )
     return result["products"]

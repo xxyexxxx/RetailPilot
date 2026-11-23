@@ -268,3 +268,10 @@ Copy-Item config\github-workflows\low-risk-automerge.yml.example .github\workflo
 ## 可选多模态 RAG
 
 商品图片、商品说明书和政策 PDF 的导入、索引、访问控制及评估见[多模态 RAG 运行手册](docs/multimodal-rag.md)。
+
+## 统一知识检索迁移
+
+当前默认路径使用 KnowledgeUnit、单一同域文本索引、Unit RRF 与统一证据加载。
+已有库先运行 `python scripts/knowledge.py migrate --backup data/before-unified.db`，再启动服务。
+完整导入、构建、切换、回滚和实测结果见 [统一知识检索报告](docs/unified-knowledge.md)。
+售前、售后与原始图片/表格的源码执行过程见 [端到端调用链](docs/unified-knowledge-call-chains.md)。

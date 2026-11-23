@@ -13,8 +13,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from RetailPilot.asset_config import asset_settings as config
-from RetailPilot.asset_embeddings import text_version, visual_version
-from RetailPilot.asset_evidence import public_evidence
 from RetailPilot.asset_ingestion import (
     ASSET_TYPES,
     delete_asset,
@@ -22,11 +20,16 @@ from RetailPilot.asset_ingestion import (
     process_asset,
     stage_asset,
 )
-from RetailPilot.asset_qdrant import generation_status, sync_visual
-from RetailPilot.asset_retrieval import aggregate_routes, retrieve_product_assets
-from RetailPilot.asset_store import download_image, store
+from RetailPilot.asset_store import download_image
 from RetailPilot.catalog import get_product
 from RetailPilot.database import db_session, init_db
+from RetailPilot.knowledge_evidence import public_hit
+from RetailPilot.knowledge_qdrant import sync as sync_visual
+from RetailPilot.knowledge_retrieval import (
+    RetrievalFilters,
+    RetrievalQuery,
+    retrieve,
+)
 from RetailPilot.policy import TOPIC_DOCUMENT_COMPATIBILITY
 from RetailPilot.policy_ingestion import PolicyDocumentInput, ingest_policy_documents
 
@@ -72,65 +75,10 @@ def import_asset(
     return status(process_asset(aid) if queued else get_asset(aid))
 
 
-def check() -> dict:
-    queries = {
-        "assets_by_status": "SELECT status,COUNT(*) AS count FROM assets GROUP BY status",
-        "missing_fts": """SELECT COUNT(*) FROM asset_chunks ch JOIN assets a USING(asset_id)
-                          WHERE ch.search_text!='' AND a.sku IS NOT NULL
-                          AND NOT EXISTS(SELECT 1 FROM asset_fts f WHERE f.chunk_id=ch.chunk_id)""",
-        "orphan_fts": """SELECT COUNT(*) FROM asset_fts f WHERE NOT EXISTS(
-                         SELECT 1 FROM asset_chunks ch WHERE ch.chunk_id=f.chunk_id)""",
-        "duplicate_fts": "SELECT COUNT(*)-COUNT(DISTINCT chunk_id) FROM asset_fts",
-        "missing_policy_chunks": """SELECT COUNT(*) FROM asset_chunks ch JOIN assets a USING(asset_id)
-                          WHERE a.doc_id IS NOT NULL AND NOT EXISTS(
-                          SELECT 1 FROM policy_chunks p WHERE p.chunk_id=ch.chunk_id)""",
-        "stale_policy_versions": """SELECT COUNT(*) FROM assets a JOIN policy_documents d USING(doc_id)
-                                  WHERE a.source_version!=d.version""",
-        "bad_vectors": "SELECT COUNT(*) FROM asset_vectors WHERE dim<=0 OR length(vector)!=dim*4",
-        "vector_versions": "SELECT space,model_version,dim,COUNT(*) AS count FROM asset_vectors GROUP BY 1,2,3",
-    }
-    with db_session() as db:
-        result = {}
-        for key, sql in queries.items():
-            rows = db.execute(sql).fetchall()
-            result[key] = (
-                rows[0][0]
-                if len(rows) == 1 and len(rows[0]) == 1
-                else [dict(row) for row in rows]
-            )
-        result["missing_text_vectors"] = db.execute(
-            """
-            SELECT COUNT(*) FROM asset_chunks ch JOIN assets a USING(asset_id)
-            WHERE a.sku IS NOT NULL AND a.status IN ('ready','partial') AND ch.search_text!=''
-              AND NOT EXISTS(SELECT 1 FROM asset_vectors v WHERE v.chunk_id=ch.chunk_id
-                             AND v.space='text' AND v.model_version=?)
-            """,
-            (text_version(),),
-        ).fetchone()[0]
-        result["missing_visual_vectors"] = (
-            db.execute(
-                """
-            SELECT COUNT(*) FROM asset_chunks ch JOIN assets a USING(asset_id)
-            JOIN asset_elements e ON e.element_id=ch.element_id
-            WHERE a.sku IS NOT NULL AND a.status IN ('ready','partial') AND e.element_type='image'
-              AND NOT EXISTS(SELECT 1 FROM asset_vectors v WHERE v.chunk_id=ch.chunk_id
-                             AND v.space='visual' AND v.model_version=?)
-            """,
-                (visual_version(),),
-            ).fetchone()[0]
-            if config.visual_enabled
-            else None
-        )
-        keys = [
-            row[0]
-            for row in db.execute("""
-            SELECT storage_uri FROM assets UNION SELECT preview_key FROM asset_elements
-            WHERE preview_key IS NOT NULL
-            """)
-        ]
-        result["missing_blobs"] = sum(not store().path(key).is_file() for key in keys)
-        result["visual_mirror"] = generation_status(db)
-    return result
+def check():
+    from scripts.knowledge import check as knowledge_check
+
+    return knowledge_check()
 
 
 def main() -> None:
@@ -261,22 +209,25 @@ def main() -> None:
                 if decoded.width * decoded.height > config.max_pixels:
                     parser.error("image query exceeds pixel limit")
                 image = image_png(decoded)
-        params = {"where": "p.sku=?", "params": [args.sku]} if args.sku else {}
-        hits, errors = retrieve_product_assets(
-            args.query,
-            dense=not args.no_dense,
-            visual=not args.no_visual,
-            image=image,
-            **params,
+        filters = RetrievalFilters(
+            product_where="p.sku=?" if args.sku else "1=1",
+            product_params=[args.sku] if args.sku else [],
         )
-        routes, evidence = aggregate_routes(hits)
+        hits, routes, trace = retrieve(
+            RetrievalQuery(args.query, "product", image=image),
+            filters,
+            methods=("knowledge_bm25",)
+            if args.no_dense
+            else ("knowledge_bm25", "knowledge_dense")
+            if args.no_visual
+            else None,
+        )
         result = {
-            "routes": routes,
-            "degraded": errors,
-            "evidence": {
-                sku: [pkg for hit in group if (pkg := public_evidence(hit))]
-                for sku, group in evidence.items()
+            "routes": {
+                name: [hit.unit_id for hit in group] for name, group in routes.items()
             },
+            "degraded": trace["errors"],
+            "evidence": [public_hit(hit) for hit in hits],
         }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     values = result.get("assets", [result]) if isinstance(result, dict) else result

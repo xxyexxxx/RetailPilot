@@ -156,6 +156,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
 
     if asset_settings.enabled and task['intent'] in {'detail', 'compare'}:
         import re
+
         from ..catalog import get_products
 
         candidates = re.findall(r'(?<![A-Za-z0-9_-])[A-Za-z0-9][A-Za-z0-9_-]{2,79}(?![A-Za-z0-9_-])', task['text'])
@@ -424,7 +425,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
         )
         compose_products = products[:3]
         # Discovery descriptions never enter the free-form reply composer.
-        compose_data = [{key: value for key, value in product.items() if key != 'asset_evidence'}
+        compose_data = [{key: value for key, value in product.items() if key not in {'asset_evidence','knowledge_evidence'}}
                         for product in compose_products]
         note = (relaxation_note + preferred_note).strip()
         response = (None if asset_question else runtime.compose_reply(

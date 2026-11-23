@@ -76,16 +76,11 @@ def test_search_logging_persists_routes_impressions_and_sample():
     assert "random_sample" in json_loads(sample["sampling_reasons_json"], [])
 
 
-def test_neural_runtime_failure_falls_back_to_hash(monkeypatch):
-    class BrokenIndex:
-        def recall(self, *_args, **_kwargs):
-            raise OSError("model cache is incomplete")
-
-    monkeypatch.setattr(retrieval, "get_neural_index", lambda: BrokenIndex())
-    parsed = parse_query("推荐数码产品")
-    pool = retrieval._structured_skus(parsed)
-    dense = retrieval._dense_recall_result(parsed, pool, limit=5)
-
-    assert dense.backend == "hash-flat"
-    assert dense.ranking
-    assert "model cache is incomplete" in dense.fallback_reason
+def test_neural_runtime_failure_preserves_bm25(monkeypatch):
+    from RetailPilot.knowledge_retrieval import TextDenseRetriever
+    def fail(*args):
+        raise OSError('model cache is incomplete')
+    monkeypatch.setattr(TextDenseRetriever,'retrieve',fail)
+    result = search_engine.search('推荐数码产品',limit=5)
+    assert result['retrieval']['knowledge']['errors']['knowledge_dense'] == 'OSError'
+    assert result['retrieval']['routes']['knowledge_bm25']

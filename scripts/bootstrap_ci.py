@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from RetailPilot.catalog_adapters import normalize_shopsimulator_item, upsert_normalized_products
+from RetailPilot.catalog_adapters import (
+    normalize_shopsimulator_item,
+    upsert_normalized_products,
+)
 from RetailPilot.config import settings
-from RetailPilot.database import db_session, init_db, json_dumps, set_metadata
+from RetailPilot.database import init_db, set_metadata
 from RetailPilot.eval_dataset import seed_retrieval_eval_dataset
-from RetailPilot.text import hash_vector, vector_to_blob
-
 
 CATEGORY_PROFILES = {
     "Computers": [
@@ -98,7 +97,6 @@ def _legacy_products(per_category: int = 600):
                 title, content = profiles[profile_index]
             price = float(20 + index % 80)
             sku = f"ci-{category.lower().replace(' ', '-').replace('&', 'and')}-{index:03d}"
-            searchable = f"{title} {content} {category} item {index}"
             yield {
                 "sku": sku,
                 "title": f"{title} {index}",
@@ -120,7 +118,6 @@ def _legacy_products(per_category: int = 600):
                 "source_url": "",
                 "quality_score": 0.8,
                 "popularity_score": 0.7,
-                "vector": vector_to_blob(hash_vector(searchable)),
                 "commerce": {
                     "platform": "ci", "platform_product_id": sku, "spu_id": sku,
                     "seller_name": "CI Store", "currency": "USD", "category_path": category,

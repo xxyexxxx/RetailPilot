@@ -44,6 +44,7 @@ class ProductResponse(BaseModel):
     score: float = 0
     score_breakdown: dict[str, Any] = Field(default_factory=dict)
     asset_evidence: list[dict[str, Any]] | None = None
+    knowledge_evidence: list[dict[str, Any]] | None = None
     assets: list[dict[str, Any]] | None = None
     citations: list[dict[str, Any]] = Field(default_factory=list)
 
