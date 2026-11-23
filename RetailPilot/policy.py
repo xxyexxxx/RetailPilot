@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Literal
 
+from .asset_config import asset_settings
+from .asset_evidence import hydrate
 from .catalog import get_products
 from .config import settings
 from .database import db_session, json_loads
@@ -143,6 +145,11 @@ def retrieve_policies(
         categories=categories,
         effective_on=effective_on,
     )
+    where_sql += """ AND (a.asset_id IS NULL OR
+        (? = 1 AND a.status IN ('ready','partial') AND a.source_version=d.version))"""
+    filter_params = [*filter_params, int(asset_settings.enabled)]
+    asset_joins = """LEFT JOIN asset_chunks ac ON ac.chunk_id=c.chunk_id
+        LEFT JOIN assets a ON a.asset_id=ac.asset_id"""
     select_sql = f"""
         SELECT
             c.chunk_id, c.doc_id, c.parent_chunk_id, c.chunk_type, c.ordinal,
@@ -157,6 +164,7 @@ def retrieve_policies(
             d.metadata_json AS document_metadata_json, d.updated_at
         FROM policy_chunks c
         JOIN policy_documents d ON d.doc_id = c.doc_id
+        {asset_joins}
         WHERE {where_sql}
     """
 
@@ -174,6 +182,7 @@ def retrieve_policies(
                 FROM policy_chunk_fts f
                 JOIN policy_chunks c ON c.chunk_id = f.chunk_id
                 JOIN policy_documents d ON d.doc_id = c.doc_id
+                {asset_joins}
                 WHERE policy_chunk_fts MATCH ? AND {where_sql}
                 ORDER BY bm25_score ASC, f.chunk_id ASC
                 LIMIT ?
@@ -231,7 +240,13 @@ def retrieve_policies(
     seen_sections: set[tuple[str, str]] = set()
     for chunk_id in ordered_ids:
         item = dict(candidate_by_id[chunk_id])
-        section_key = (str(item["doc_id"]), str(item["section_path"]))
+        asset_id = item['chunk_metadata'].get('asset_id')
+        if asset_id:
+            package = hydrate(chunk_id)
+            if package is None:
+                continue
+            item['asset_location'] = package.source_location
+        section_key = (str(item['doc_id']), chunk_id if asset_id else str(item['section_path']))
         if section_key in seen_sections:
             continue
         seen_sections.add(section_key)

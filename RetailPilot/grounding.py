@@ -15,6 +15,8 @@ def citation_key(citation: dict[str, Any]) -> str:
         key: citation.get(key)
         for key in (
             "sku",
+            "asset_id",
+            "element_id",
             "chunk_id",
             "doc_id",
             "order_id",
@@ -73,6 +75,7 @@ def policy_citation(document: dict[str, Any]) -> dict[str, Any]:
         "char_start": document.get("char_start"), "char_end": document.get("char_end"),
         "version": document.get("version", ""), "effective_from": document.get("effective_from", ""),
         "effective_to": document.get("effective_to", ""),
+        **({**document["asset_evidence"], "field": "content"} if document.get("asset_evidence") else {}),
     }
 
 
@@ -146,6 +149,7 @@ def validate_claim_citations(
     products: list[dict[str, Any]] | None = None,
     policy_documents: list[dict[str, Any]] | None = None,
     order: dict[str, Any] | None = None,
+    asset_sources: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Hard-check structured response facts against cited source records."""
 
@@ -175,6 +179,23 @@ def validate_claim_citations(
         field = str(citation.get("field") or "")
         value = citation.get("value")
         source_mismatch = False
+        if citation.get("asset_id"):
+            from .asset_evidence import valid_asset_citation
+
+            document = document_by_chunk.get(str(citation.get("chunk_id") or ""))
+            trusted = list(asset_sources or [])
+            if document and document.get("asset_evidence") and document.get("content") == value:
+                trusted.append(document["asset_evidence"])
+            entity = citation.get("sku") or citation.get("doc_id")
+            present = bool(citation.get("sku") in product_by_sku if citation.get("sku") else document)
+            wording = str(item.get("claim") or "")
+            supported_wording = wording == str(value) if field == "asset_content" else (
+                wording == str(value) or _claim_text_supported(wording, value, field)
+            )
+            if (not present or item.get("entity_id") != entity
+                    or not valid_asset_citation(citation, trusted) or not supported_wording):
+                issues.append({"index": index, "type": "unsupported_asset_claim", "claim": item.get("claim")})
+            continue
         if citation.get("sku"):
             product = product_by_sku.get(str(citation["sku"]))
             if not product:

@@ -9,6 +9,8 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
+from .asset_config import asset_settings
+from .asset_evidence import policy_asset_evidence
 from .config import settings
 from .execution import policy_pool
 from .llm_config import PolicyCallBudget, policy_call_budget
@@ -142,10 +144,20 @@ def run_policy_followup(
     active = settings.policy_followup_enabled if enabled is None else enabled
     max_hops = settings.policy_max_extra_hops if active else 0
 
+    vision_budget: dict[str, Any] = {
+        'remaining': asset_settings.verification_images,
+        'deadline': min(deadline, time.perf_counter() + asset_settings.verification_timeout),
+        'observations': {},
+    }
+
     def merge(documents: list[dict[str, Any]], hop: int) -> tuple[int, int]:
         new_ids = 0
         added = 0
         for raw in documents:
+            if asset_settings.enabled:
+                raw = policy_asset_evidence(raw, query, vision_budget)
+                if raw is None:
+                    continue
             cid = raw.get("chunk_id")
             if (
                 not cid
@@ -412,7 +424,11 @@ def run_policy_followup(
         )
         # Keep EXACT selected snapshot for both consumers, no hidden parent expansion.
         final = [item for item in selected if item["chunk_id"] in final_ids]
-        actual_tokens = sum(event.get("total_tokens", 0) for event in budget.events)
+        if asset_settings.enabled:
+            verdict['supporting_asset_ids'] = list(dict.fromkeys(
+                item['asset_evidence']['asset_id'] for item in final if item.get('asset_evidence')
+            ))
+        actual_tokens = sum(event.get('total_tokens', 0) for event in budget.events)
         costs = [event.get("estimated_cost") for event in budget.events]
         summary = {
             "node": "after_sales.policy_followup_complete",
@@ -427,6 +443,8 @@ def run_policy_followup(
             if costs and all(v is not None for v in costs)
             else None,
             "selected_chunk_ids": [item["chunk_id"] for item in final],
+            **({'visual_verification_calls': asset_settings.verification_images - vision_budget['remaining']}
+               if asset_settings.enabled else {}),
             "cumulative_evidence_count": len(pool),
             "retrieved_chunk_ids": [item["chunk_id"] for item in pool],
             "latency_ms": round((time.perf_counter() - started) * 1000, 2),

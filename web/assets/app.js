@@ -1,6 +1,8 @@
 import { api, streamChat, setCsrfToken, LatestRequest, withButton } from "./client.js";
 import { loadSession, newSession } from "./session.js";
 
+import { assetEvidenceCard, assetCitations, assetGallery, configureAssetsPanel, bindAssetsPanel } from "./assets.js";
+
 const chatRequest = new LatestRequest();
 const searchRequest = new LatestRequest();
 let chatBusy = false;
@@ -144,6 +146,7 @@ function productCard(product, compact = false) {
           <span class="product-rating">★ ${Number(product.rating).toFixed(1)} · ${formatNumber(product.rating_count)}</span>
         </div>
         <p class="product-reason">${escapeHtml(product.reason || product.features?.[0] || "")}</p>
+        ${assetEvidenceCard(product.asset_evidence?.[0])}
         ${compact ? "" : scoreRow("相关性", score.term_match ?? product.score)}
         ${compact ? "" : scoreRow("个性化", (Number(score.personalization || 0) + 1) / 2)}
         <div class="product-actions">
@@ -254,6 +257,7 @@ function renderChatInspector(payload) {
         <div><b>Excluded</b><span>${escapeHtml((parsed.negative_terms || []).slice(0, 4).join(", ") || "-")}</span></div>
       </div>
     </div>
+    ${assetCitations(payload.citations)}
     <div class="trace-list">
       ${decisions.map((item, index) => `
         <div class="trace-item">
@@ -345,6 +349,9 @@ function renderSearchInspector(payload) {
         <strong>Controlled relaxation</strong>
         <span>${escapeHtml(payload.relaxations[0].message)}</span>
       </div>
+    ` : ""}
+    ${Object.keys(payload.retrieval?.asset_retrieval_status || {}).length ? `
+      <p class="constraint-note">部分资产检索通道不可用，已使用可用通道。</p>
     ` : ""}
     ${top ? `
       <div class="query-block">
@@ -447,6 +454,7 @@ function showProduct(product) {
       </div>
     </div>
   `;
+  $("#product-dialog-content").insertAdjacentHTML("beforeend", assetGallery(product.assets));
   $("#product-dialog").showModal();
   refreshIcons();
 }
@@ -506,7 +514,7 @@ async function handleProductAction(button) {
   const product = state.products.get(card?.dataset.sku);
   if (!product) return;
   const action = button.dataset.action;
-  if (action === "detail") showProduct(product);
+  if (action === "detail") showProduct({ ...product, ...(await api(`/api/products/${encodeURIComponent(product.sku)}`)) });
   if (action === "favorite") await recordInteraction(product, "favorite");
   if (action === "cart") await recordInteraction(product, "cart");
   if (action === "compare") toggleCompare(product);
@@ -527,6 +535,8 @@ async function restoreHistory(beforeId = null) {
 
 async function loadWorkspace(identity) {
   setCsrfToken(identity.csrf_token);
+  void configureAssetsPanel(identity.mode === "cookie" ? identity.user_id : null,
+    () => state.userId === identity.user_id);
   state.userId = identity.user_id;
   state.sessionId = loadSession(state.userId);
   state.products.clear();
@@ -541,6 +551,8 @@ async function loadWorkspace(identity) {
   const [catalog, profile] = await Promise.all([api("/api/catalog"), api(`/api/profile/${state.userId}`), restoreHistory()]);
   updateCatalog(catalog); updateProfile(profile); refreshIcons();
 }
+
+bindAssetsPanel();
 
 async function init() {
   try {

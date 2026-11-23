@@ -1,0 +1,3 @@
+# Optional lightweight processing. Install after requirements.txt.
+pillow>=11,<14
+pypdf>=5,<9

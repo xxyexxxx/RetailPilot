@@ -26,13 +26,33 @@ def _ordinal(value: str, *, open_end: bool = False) -> int:
     return date.fromisoformat(value).toordinal()
 
 
+def _prune(client, models, collection: str, current: set[str]) -> int:
+    offset, deleted = None, 0
+    while True:
+        points, offset = client.scroll(
+            collection, offset=offset, limit=256, with_payload=['chunk_id'],
+        )
+        stale = []
+        for point in points:
+            chunk_id = (point.payload or {}).get('chunk_id')
+            if (isinstance(chunk_id, str) and chunk_id not in current
+                    and str(point.id) == str(uuid.uuid5(POINT_NAMESPACE, chunk_id))):
+                stale.append(point.id)
+        if stale:
+            client.delete(collection, models.PointIdsList(points=stale), wait=True)
+            deleted += len(stale)
+        if offset is None:
+            return deleted
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build the policy chunk collection in Qdrant."
     )
     parser.add_argument("--database", type=Path, default=settings.database_path)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--recreate", action="store_true")
+    parser.add_argument('--recreate', action='store_true')
+    parser.add_argument('--prune', action='store_true', help='Remove stale RetailPilot policy points after a successful build.')
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument(
         "--cache-reranker",
@@ -55,7 +75,10 @@ def main() -> None:
                 d.source_uri, d.jurisdiction
             FROM policy_chunks c
             JOIN policy_documents d ON d.doc_id = c.doc_id
-            WHERE c.chunk_type != 'parent'
+            LEFT JOIN asset_chunks ac ON ac.chunk_id = c.chunk_id
+            LEFT JOIN assets a ON a.asset_id = ac.asset_id
+            WHERE c.chunk_type != 'parent' AND trim(c.contextualized_content) != ''
+            AND (a.asset_id IS NULL OR (a.status IN ('ready','partial') AND a.source_version=d.version))
             ORDER BY d.doc_id, c.ordinal
             """
         ).fetchall()
@@ -138,6 +161,10 @@ def main() -> None:
             )
         client.upsert(collection_name=collection, points=points, wait=True)
 
+    pruned = 0
+    if args.prune:
+        pruned = _prune(client, models, collection, {str(row['chunk_id']) for row in rows})
+
     with db_session(args.database) as connection:
         connection.execute(
             """
@@ -172,6 +199,7 @@ def main() -> None:
             {
                 "collection": collection,
                 "chunks": len(rows),
+                "pruned": pruned,
                 "dimension": dimension,
                 "embedding_model": settings.policy_embedding_model,
                 "reranker_model": settings.policy_reranker_model,

@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from .asset_config import asset_settings
 from .config import settings
 from .context import normalize_history_summary
 from .llm_config import agent_max_tokens, get_model, invoke_with_telemetry
@@ -391,6 +392,9 @@ target_terms 留空，同时填 clarification_slot="product" 和一句追问
 {json.dumps(list(_INTENT_EXAMPLES), ensure_ascii=False)}
 """.strip()
 
+    if asset_settings.enabled:
+        stable_prefix += ('\n已购商品的安装、使用故障、说明书和故障流程图归入 service。'
+                          '选购时查看商品说明书、结构或宣传图参数归入 detail；按这些证据寻找商品归入 search。')
     prompt = build_cached_messages(
         stable_prefix,
         {
@@ -562,7 +566,7 @@ answer: sufficient=true, conflict=false，覆盖全部必要条件且每个条�
 retrieve_more: 缺少可能从知识库找到的政策规则，missing_aspects 必须具体；不宣称一定存在。
 ask_user: 缺少必须由用户提供的订单、SKU、时间等事实；填写 required_user_fields 和一个澄清问题，禁止检索猜测。
 refuse: 无法可靠判断或同一有效范围内存在无法消解的冲突。冲突时 conflict=true。
-不同版本、类目、适用范围的差异不自动构成冲突。不能确定适用性时保守判断。
+不同版本、类目、适用范围的差异不自动构成冲突。不能确定适用性时保守判断。\n“图示观察”只可支持图中所示的操作和流程关系，退换、退款、期限、费用和适用资格必须来自政策原文或结构化条款表格。
 不得将申请核验资格扩大成保证退货成功。只能引用输入的真实 chunk_id。
 covered_aspects 与 aspect_evidence_map 的键一致，supporting_chunk_ids 等于映射中所有 ID 的并集。
 next_action=answer 时 missing_aspects 为空，证据必须覆盖全部条件和例外。
@@ -610,7 +614,7 @@ def plan_after_sales(
 - order_query：查订单。args: {{"user_id": "<由系统注入>", "order_id": "明确订单号或 null", "product_query": "商品名或 null", "created_after": "日期或 null", "created_before": "日期或 null", "limit": 5}}
   只有订单号、商品和日期都为空时才返回最近一笔；按商品或日期查询时返回候选列表。
 - policy_retrieve：检索售后政策知识库。args: {{"product_context": {{"sku": "SKU", "category": "权威类目", "category_path": "类目路径", "purchased_at": "下单时间"}}}}
-  topic 必须用知识库的规范主题词：退款、发票、保修、配送（运费类）、退换货（退货/换货类）。
+  topic 必须用知识库的规范主题词：退款、发票、保修、配送（运费类）、退换货（退货/换货类）。{('售后安装、故障排查和说明书图示查询归入保修主题，保留技术问题的原意。' if asset_settings.enabled else '')}
   query 和 topic 统一使用计划顶层的 standalone_query/topic，由执行器注入，步骤里不要重复生成。
 
 route 定义：

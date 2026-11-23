@@ -25,6 +25,9 @@ from .embeddings import DenseRecall, get_neural_index
 from .query import parse_query
 from .schemas import ParsedQuery
 from .taxonomy import correction_candidates
+from .asset_config import asset_settings
+from .asset_evidence import public_evidence, meaningful_overlap
+from .asset_retrieval import aggregate_routes, retrieve_product_assets
 from .text import fast_catalog_tokens, hash_vector, tokenize, vector_from_blob
 
 
@@ -34,6 +37,9 @@ ROUTE_WEIGHTS = {
     "dense": 0.28,
     "popular": 0.12,
     "personal": 0.18,
+    "asset_bm25": 0.26,
+    "asset_text": 0.16,
+    "asset_visual": 0.24,
 }
 TITLE_SCOPED_NEGATIVE_TERMS = {
     "in ear",
@@ -305,9 +311,8 @@ def _hash_index() -> tuple[list[str], dict[str, int], np.ndarray]:
             "SELECT sku, dim, vector FROM product_vectors ORDER BY sku"
         ).fetchall()
     skus = [row["sku"] for row in rows]
-    matrix = np.vstack(
-        [vector_from_blob(row["vector"], int(row["dim"])) for row in rows]
-    )
+    matrix = (np.vstack([vector_from_blob(row['vector'], int(row['dim'])) for row in rows])
+              if rows else np.empty((0, settings.vector_dim), dtype=np.float32))
     sku_to_index = {sku: index for index, sku in enumerate(skus)}
     _HASH_INDEX = (cache_key, skus, sku_to_index, matrix)
     return skus, sku_to_index, matrix
@@ -527,8 +532,9 @@ def _passes_non_relaxable_constraints(
     ).casefold()
     if any(term.casefold() in title for term in parsed.excluded_title_terms):
         return False
+    asset_text = ' '.join(item.get('text_content', '') for item in product.get('asset_evidence') or []).casefold()
     for term in parsed.negative_terms[:8]:
-        target = title if term.casefold() in TITLE_SCOPED_NEGATIVE_TERMS else searchable
+        target = title if term.casefold() in TITLE_SCOPED_NEGATIVE_TERMS else f'{searchable} {asset_text}'
         if term.casefold() in target:
             return False
     return True
@@ -552,6 +558,10 @@ def _must_have_score(parsed: ParsedQuery, product: dict[str, Any]) -> float:
             product["attributes_text"][:1600],
         ]
     ).lower()
+    if product.get('asset_evidence'):
+        haystack += ' ' + ' '.join(
+            item.get('text_content', '') for item in product['asset_evidence']
+        ).lower()
     matched = sum(
         1
         for group in parsed.must_have_groups
@@ -654,6 +664,8 @@ def _score_candidates(
         if row is None:
             continue
         product = hydrate_product(row)
+        if row.get('asset_evidence'):
+            product['asset_evidence'] = row['asset_evidence']
         match_score, matched_terms = _term_match_score(parsed, product)
         quality = float(product["quality_score"])
         popularity = float(product["popularity_score"])
@@ -922,6 +934,46 @@ class SearchEngine:
                 }
             )
 
+        asset_started = time.perf_counter()
+        asset_routes, asset_hits, asset_errors = {}, {}, {}
+        if asset_settings.enabled:
+            where, params = _sql_filters(parsed)
+            if (parsed.price_min is not None and parsed.sources.get('catalog_scope') == 'domestic_cny'
+                    and parsed.sources.get('price_constraint') != 'soft:approximate'):
+                where += ' AND p.price >= ?'
+                params.append(parsed.price_min)
+            rankings, asset_errors = retrieve_product_assets(
+                parsed.raw_query, where=where, params=params, dense=mode == 'hybrid',
+                visual=mode == 'hybrid',
+            )
+            asset_routes, asset_hits = aggregate_routes(rankings)
+            scoped = {
+                row['sku'] for row in _products_for_skus(list(asset_hits))
+                if _passes_non_relaxable_constraints(parsed, row) and row['stock'] > 0
+            }
+            asset_hits = {
+                sku: hydrated for sku, hits in asset_hits.items() if sku in scoped
+                if (hydrated := [item for hit in hits if (item := public_evidence(hit))])
+            }
+            asset_routes = {
+                key: [sku for sku in skus if sku in asset_hits]
+                for key, skus in asset_routes.items()
+            }
+            # A weak nearest neighbour alone cannot clear the open-query guard.
+            if _needs_product_anchor(parsed):
+                anchors = {
+                    sku for sku, evidence in asset_hits.items()
+                    if any(meaningful_overlap(parsed.raw_query,
+                                              item['text_content'] + ' ' + item['matched_description'])
+                           for item in evidence)
+                }
+                asset_routes = {key: [sku for sku in skus if sku in anchors]
+                                for key, skus in asset_routes.items()}
+                asset_hits = {sku: hits for sku, hits in asset_hits.items() if sku in anchors}
+            stage_timings['asset_recall'] = (time.perf_counter() - asset_started) * 1000
+            trace.append({'node': 'asset_recall', 'routes': {key: len(value) for key, value in asset_routes.items()},
+                          'degradations': asset_errors})
+
         seeded_fts: list[str] | None = None
         seeded_skus: list[str] | None = None
         guard_started = time.perf_counter()
@@ -934,20 +986,20 @@ class SearchEngine:
             seeded_fts = [
                 sku for sku in open_fts if evidence_by_sku.get(sku, {}).get("pass")
             ]
-            seeded_skus = list(seeded_fts)
-            if seeded_fts:
+            seeded_skus = list(dict.fromkeys([*seeded_fts, *asset_hits]))
+            if seeded_skus:
                 parsed = replace(
                     parsed,
                     clarification_slot=None,
                     clarification_question=None,
                     confidence=max(parsed.confidence, 0.8),
-                    sources={**parsed.sources, "catalog_anchor": "fts:lexical_evidence"},
+                    sources={**parsed.sources, "catalog_anchor": "fts:lexical_evidence" if seeded_fts else "asset:evidence"},
                 )
                 trace.append(
                     {
                         "node": "query_guard",
                         "blocked": False,
-                        "reason": "catalog_lexical_evidence",
+                        "reason": "catalog_lexical_evidence" if seeded_fts else "asset_evidence",
                         "fts_candidates": len(open_fts),
                         "grounded_candidates": len(seeded_fts),
                     }
@@ -997,6 +1049,7 @@ class SearchEngine:
             candidate_skus, recall_query, relaxations = seeded_skus, parsed, []
         else:
             candidate_skus, recall_query, relaxations = _pool_with_relaxation(parsed)
+        candidate_skus = list(dict.fromkeys([*candidate_skus, *asset_hits]))
         stage_timings["structured_filter"] = (
             time.perf_counter() - filter_started
         ) * 1000
@@ -1074,14 +1127,15 @@ class SearchEngine:
         # Sparse/dense recall returns only identifiers. Hydrate the bounded
         # union once, then compute popularity and personalization inside that
         # relevant set so neither route scans the full hard-filtered catalogue.
-        recall_scores = _rrf({"fts": fts, "dense": dense})
+        recall_scores = _rrf({"fts": fts, "dense": dense, **asset_routes})
         recalled_skus = sorted(
             recall_scores,
             key=lambda sku: (-recall_scores[sku], sku),
         )[:300]
         fetch_started = time.perf_counter()
         pool = _products_for_skus(recalled_skus)
-        pool_by_sku = {row["sku"]: row for row in pool}
+        pool_by_sku = {row['sku']: {**row, 'asset_evidence': asset_hits[row['sku']]}
+                       if row['sku'] in asset_hits else row for row in pool}
         stage_timings["candidate_payload_fetch"] = (
             time.perf_counter() - fetch_started
         ) * 1000
@@ -1100,6 +1154,7 @@ class SearchEngine:
             "dense": dense if mode == "hybrid" else [],
             "popular": popular,
             "personal": personal if mode == "hybrid" else [],
+            **asset_routes,
         }
         trace.append(
             {
@@ -1212,6 +1267,7 @@ class SearchEngine:
                 "semantic_dense": dense_result.semantic,
                 "dense_fallback_reason": dense_result.fallback_reason,
                 "candidate_funnel": funnel,
+                **({'asset_retrieval_status': asset_errors} if asset_settings.enabled else {}),
             },
             "mode": mode,
         }

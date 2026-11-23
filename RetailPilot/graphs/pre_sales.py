@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from .. import agent as runtime
+from ..asset_config import asset_settings
+from ..asset_evidence import product_asset_answer, requires_asset
 
 
 def _format_product_line(product: dict[str, runtime.Any], index: int) -> str:
@@ -40,6 +42,7 @@ def _ground_output(
     *,
     policy_documents: list[dict[str, runtime.Any]] | None = None,
 ) -> dict[str, runtime.Any]:
+    asset_sources = payload.pop('_asset_sources', [])
     citations = runtime.attach_citation_ids(payload.get("citations") or [])
     # Claims may have been created before citations were normalized. IDs are
     # deterministic, so validation remains stable across serialization.
@@ -49,6 +52,7 @@ def _ground_output(
         products=payload.get("products") or [],
         policy_documents=policy_documents or [],
         order=payload.get("order"),
+        **({'asset_sources': asset_sources} if asset_sources else {}),
     )
     payload["citations"] = citations
     payload["claims"] = claims
@@ -56,8 +60,23 @@ def _ground_output(
     return payload
 
 
+def _add_asset_answer(payload, claims, query):
+    if not asset_settings.enabled:
+        return
+    evidence = product_asset_answer(query, payload.get('products') or [])
+    if evidence['lines']:
+        payload['response'] += '\n' + '\n'.join(evidence['lines'])
+    elif evidence['needed_visual']:
+        payload['response'] += '\n当前没有足够的原始资料核实您问的细节。'
+    payload['citations'].extend(evidence['citations'])
+    payload['_asset_sources'] = evidence['sources']
+    claims.extend(runtime.claim(citation['value'], citation, claim_type='asset_observation')
+                  for citation in evidence['citations'])
+
+
 def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
     task = state["active_task"]
+    asset_question = asset_settings.enabled and requires_asset(task['text'])
     skill_context = runtime.context_for_skill(state.get("context") or {}, "pre_sales")
     intent_category = task.get("category")
     intent_terms = [t for t in (task.get("target_terms") or []) if t][:12]
@@ -80,6 +99,16 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
         llm_concepts=[c for c in intent_c.get("concepts") or [] if c],
         intent=task["intent"],
     )
+    if asset_settings.enabled:
+        from ..catalog import list_brands
+        from ..query import parse_query
+
+        constraints = parse_query(task['text'], known_brands=list_brands())
+        parsed.brands = constraints.brands
+        parsed.negative_brands = list(dict.fromkeys([*parsed.negative_brands, *constraints.negative_brands]))
+        parsed.excluded_title_terms = constraints.excluded_title_terms
+        parsed.negative_terms = list(dict.fromkeys([*parsed.negative_terms, *constraints.negative_terms]))
+        parsed.must_have_groups = constraints.must_have_groups
     parsed.sources["intent"] = str(task.get("intent_source") or "intent_analyzer")
     if intent_category in runtime.ALLOWED_CATEGORIES:
         parsed.sources["category"] = "llm:intent"
@@ -99,7 +128,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
         )
     # Tool contract: catalog_search requires a resolved product target. An
     # unknown category is a missing slot, not authorization for broad recall.
-    if parsed.clarification_slot:
+    if parsed.clarification_slot and not (asset_settings.enabled and task['intent'] == 'search'):
         return {
             "branch_outputs": [
                 {
@@ -124,6 +153,13 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                 question=parsed.clarification_question,
             ),
         }
+
+    if asset_settings.enabled and task['intent'] in {'detail', 'compare'}:
+        import re
+        from ..catalog import get_products
+
+        candidates = re.findall(r'(?<![A-Za-z0-9_-])[A-Za-z0-9][A-Za-z0-9_-]{2,79}(?![A-Za-z0-9_-])', task['text'])
+        parsed.reference_skus = [product['sku'] for product in get_products(candidates[:12])]
 
     if task["intent"] == "detail":
         # 用户指代"第一款/它/这个"时不走本地序数词规则，直接从会话状态取
@@ -169,12 +205,12 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
             feature_text = (
                 "；".join(product["features"][:4]) or product["description"][:240]
             )
-            response = runtime.compose_reply(
+            response = (None if asset_question else runtime.compose_reply(
                 "detail",
                 user_text=task["text"],
                 data={"product": product, "feature_text": feature_text},
                 history=state.get("history_window") or [],
-            ) or (
+            )) or (
                 f"{product['title']} 当前价格 {runtime.format_price(product)}，评分 "
                 f"{product['rating']:.1f}（{product['rating_count']} 条评价）。{feature_text}"
             )
@@ -235,6 +271,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                         claim_type="product_feature",
                     )
                 )
+            _add_asset_answer(payload, detail_claims, task['text'])
             payload = runtime._ground_output(payload, detail_claims)
         return {
             "branch_outputs": [payload],
@@ -268,7 +305,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
             ]
             cheapest = min(products, key=lambda item: item["price"])
             top_rated = max(products, key=lambda item: item["rating"])
-            response = runtime.compose_reply(
+            response = (None if asset_question else runtime.compose_reply(
                 "compare",
                 user_text=task["text"],
                 data={
@@ -277,7 +314,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                     "top_rated_title": top_rated["title"],
                 },
                 history=state.get("history_window") or [],
-            ) or (
+            )) or (
                 "对比结果：\n"
                 + "\n".join(lines)
                 + f"\n价格更低的是 {cheapest['title']}；评分更高的是 {top_rated['title']}。"
@@ -327,6 +364,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                             claim_type=claim_type,
                         )
                     )
+        _add_asset_answer(payload, comparison_claims, task['text'])
         payload = runtime._ground_output(payload, comparison_claims)
         return {
             "branch_outputs": [payload],
@@ -385,17 +423,20 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
             else ""
         )
         compose_products = products[:3]
+        # Discovery descriptions never enter the free-form reply composer.
+        compose_data = [{key: value for key, value in product.items() if key != 'asset_evidence'}
+                        for product in compose_products]
         note = (relaxation_note + preferred_note).strip()
-        response = runtime.compose_reply(
+        response = (None if asset_question else runtime.compose_reply(
             "search",
             user_text=task["text"],
             data={
-                "products": compose_products,
+                "products": compose_data,
                 "total_candidates": result["total_candidates"],
                 "note": note,
             },
             history=state.get("history_window") or [],
-        ) or (
+        )) or (
             relaxation_note
             + preferred_note
             + f"为您筛出 {result['total_candidates']} 个候选，综合相关性、口碑和个人偏好后，"
@@ -456,6 +497,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                         claim_type=claim_type,
                     )
                 )
+    _add_asset_answer(payload, search_claims, task['text'])
     payload = runtime._ground_output(payload, search_claims)
     return {
         "branch_outputs": [payload],

@@ -382,7 +382,8 @@ def ingest_policy_documents(
                 ),
             )
             connection.execute(
-                "DELETE FROM policy_chunks WHERE doc_id = ?", (document.doc_id,)
+                """DELETE FROM policy_chunks WHERE doc_id = ? AND chunk_id NOT IN
+                (SELECT chunk_id FROM asset_chunks)""", (document.doc_id,)
             )
             connection.executemany(
                 """

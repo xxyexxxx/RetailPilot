@@ -8,7 +8,7 @@ export class ApiError extends Error {
 
 export async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (options.body) headers.set("Content-Type", "application/json");
+  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
   const response = await fetch(path, { ...options, credentials: "same-origin", headers });
   if (!response.ok) {
