@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
+from .asset_schema import ASSET_SCHEMA
 from .config import ensure_directories, settings
 
 SCHEMA = """
@@ -441,7 +442,7 @@ def db_session(path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
 
 def init_db(path: Path | str | None = None) -> None:
     with db_session(path) as connection:
-        connection.executescript(SCHEMA)
+        connection.executescript(SCHEMA + ASSET_SCHEMA)
         columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(sessions)")
         }

@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover - python-dotenv is a runtime dependency
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-if load_dotenv is not None:
+if load_dotenv is not None and os.getenv('RETAILPILOT_PARSER_WORKER') != '1':
     load_dotenv(ROOT_DIR / ".env")
 
 

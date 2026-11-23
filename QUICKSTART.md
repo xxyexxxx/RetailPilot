@@ -264,3 +264,7 @@ Copy-Item config\github-workflows\low-risk-automerge.yml.example .github\workflo
 `RETAILPILOT_AUTH_USERS_JSON`，并启用 HTTPS 与 Secure Cookie。浏览器登录后使用 HttpOnly
 会话 Cookie 和 CSRF Token，无需把长期 API Key 写入前端。完整说明见
 [契约与会话升级](docs/contracts-and-sessions.md)。
+
+## 可选多模态 RAG
+
+商品图片、商品说明书和政策 PDF 的导入、索引、访问控制及评估见[多模态 RAG 运行手册](docs/multimodal-rag.md)。

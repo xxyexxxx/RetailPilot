@@ -1,0 +1,395 @@
+{
+  "fixture": "synthetic-offline-v1",
+  "real_models": false,
+  "top_k": 3,
+  "cases": 11,
+  "runs": [
+    {
+      "mode": "baseline",
+      "sku": {
+        "queries": 5,
+        "recall": 0.2,
+        "mrr": 0.2,
+        "ndcg": 0.2
+      },
+      "asset": {
+        "queries": 9,
+        "recall": 0,
+        "mrr": 0,
+        "ndcg": 0
+      },
+      "answer_correctness": 0.18181818181818182,
+      "citation_accuracy": null,
+      "citations": 0,
+      "latency_ms": {
+        "p50": 6.041,
+        "p95": 18.974
+      },
+      "sqlite_index_bytes": null,
+      "index_payload_bytes": 154,
+      "sqlite_database_bytes": 487424,
+      "asset_store_bytes": 0,
+      "external_model_calls": 0,
+      "external_model_cost": 0.0,
+      "cases": [
+        {
+          "case": "poster-function",
+          "sku_rank": 0,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 18.848
+        },
+        {
+          "case": "visual-color",
+          "sku_rank": 0,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 11.611
+        },
+        {
+          "case": "image-parameter",
+          "sku_rank": 0,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 10.58
+        },
+        {
+          "case": "multi-image",
+          "sku_rank": 0,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 10.06
+        },
+        {
+          "case": "catalog-control",
+          "sku_rank": 1,
+          "asset_rank": null,
+          "answer_correct": true,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 19.1
+        },
+        {
+          "case": "pdf-body",
+          "sku_rank": null,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 6.041
+        },
+        {
+          "case": "table-number",
+          "sku_rank": null,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 4.017
+        },
+        {
+          "case": "flowchart",
+          "sku_rank": null,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 3.667
+        },
+        {
+          "case": "figure-nearby",
+          "sku_rank": null,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 4.981
+        },
+        {
+          "case": "pdf-fallback",
+          "sku_rank": null,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 4.026
+        },
+        {
+          "case": "missing-vision",
+          "sku_rank": null,
+          "asset_rank": null,
+          "answer_correct": true,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 3.997
+        }
+      ]
+    },
+    {
+      "mode": "enhanced_text",
+      "sku": {
+        "queries": 5,
+        "recall": 0.8,
+        "mrr": 0.8,
+        "ndcg": 0.8
+      },
+      "asset": {
+        "queries": 9,
+        "recall": 0.8888888888888888,
+        "mrr": 0.8888888888888888,
+        "ndcg": 0.8888888888888888
+      },
+      "answer_correctness": 0.9090909090909091,
+      "citation_accuracy": 1.0,
+      "citations": 8,
+      "latency_ms": {
+        "p50": 20.644,
+        "p95": 52.486000000000004
+      },
+      "sqlite_index_bytes": null,
+      "index_payload_bytes": 5293,
+      "sqlite_database_bytes": 520192,
+      "asset_store_bytes": 10847,
+      "external_model_calls": 0,
+      "external_model_cost": 0.0,
+      "cases": [
+        {
+          "case": "poster-function",
+          "sku_rank": 1,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 59.21
+        },
+        {
+          "case": "visual-color",
+          "sku_rank": 0,
+          "asset_rank": 0,
+          "answer_correct": false,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 16.051
+        },
+        {
+          "case": "image-parameter",
+          "sku_rank": 1,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 45.762
+        },
+        {
+          "case": "multi-image",
+          "sku_rank": 1,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 41.296
+        },
+        {
+          "case": "catalog-control",
+          "sku_rank": 1,
+          "asset_rank": null,
+          "answer_correct": true,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 20.644
+        },
+        {
+          "case": "pdf-body",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 18.543
+        },
+        {
+          "case": "table-number",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 10.816
+        },
+        {
+          "case": "flowchart",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 19.019
+        },
+        {
+          "case": "figure-nearby",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 41.035
+        },
+        {
+          "case": "pdf-fallback",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 17.553
+        },
+        {
+          "case": "missing-vision",
+          "sku_rank": null,
+          "asset_rank": null,
+          "answer_correct": true,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 42.657
+        }
+      ]
+    },
+    {
+      "mode": "full",
+      "sku": {
+        "queries": 5,
+        "recall": 1,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      },
+      "asset": {
+        "queries": 9,
+        "recall": 1,
+        "mrr": 1.0,
+        "ndcg": 1.0
+      },
+      "answer_correctness": 1,
+      "citation_accuracy": 1.0,
+      "citations": 8,
+      "latency_ms": {
+        "p50": 19.634,
+        "p95": 35.781499999999994
+      },
+      "sqlite_index_bytes": null,
+      "index_payload_bytes": 5389,
+      "sqlite_database_bytes": 520192,
+      "asset_store_bytes": 10847,
+      "external_model_calls": 0,
+      "external_model_cost": 0.0,
+      "cases": [
+        {
+          "case": "poster-function",
+          "sku_rank": 1,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 38.257
+        },
+        {
+          "case": "visual-color",
+          "sku_rank": 1,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 32.464
+        },
+        {
+          "case": "image-parameter",
+          "sku_rank": 1,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 32.377
+        },
+        {
+          "case": "multi-image",
+          "sku_rank": 1,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 33.306
+        },
+        {
+          "case": "catalog-control",
+          "sku_rank": 1,
+          "asset_rank": null,
+          "answer_correct": true,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 19.634
+        },
+        {
+          "case": "pdf-body",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 18.714
+        },
+        {
+          "case": "table-number",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 10.722
+        },
+        {
+          "case": "flowchart",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 15.205
+        },
+        {
+          "case": "figure-nearby",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 23.282
+        },
+        {
+          "case": "pdf-fallback",
+          "sku_rank": null,
+          "asset_rank": 1,
+          "answer_correct": true,
+          "citations": 1,
+          "correct_citations": 1,
+          "latency_ms": 9.823
+        },
+        {
+          "case": "missing-vision",
+          "sku_rank": null,
+          "asset_rank": null,
+          "answer_correct": true,
+          "citations": 0,
+          "correct_citations": 0,
+          "latency_ms": 18.263
+        }
+      ]
+    }
+  ]
+}

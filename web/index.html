@@ -6,7 +6,7 @@
   <title>RetailPilot</title>
   <link rel="stylesheet" href="/assets/styles.css">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script type="module" src="/assets/app.js?v=20261030-contracts"></script>
+  <script type="module" src="/assets/app.js?v=20261123-assets"></script>
 </head>
 <body>
   <section id="auth-panel" hidden class="auth-panel">
@@ -31,6 +31,7 @@
         <span class="status-dot"></span>
         <span id="db-count">SQLite</span>
       </div>
+      <button class="secondary-button" id="asset-open" type="button" hidden>导入资产</button>
       <button class="icon-button" id="profile-button" title="用户画像" aria-label="用户画像">
         <i data-lucide="user-round"></i>
       </button>
@@ -182,6 +183,30 @@
     <div id="profile-content"></div>
   </aside>
   <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+  <dialog id="asset-dialog">
+    <button class="dialog-close icon-button" data-close-dialog title="关闭" aria-label="关闭"><i data-lucide="x"></i></button>
+    <form id="asset-upload" class="auth-form">
+      <h2>导入知识资产</h2>
+      <p>上传成功并完成处理后，资料将发布到共享知识库。</p>
+      <label>归属<select name="owner_type"><option value="product">商品</option><option value="policy">售后政策</option></select></label>
+      <label>SKU 或政策文档 ID<input name="owner_id" required maxlength="160"></label>
+      <label>资产类型<select name="asset_type">
+        <option value="product_main_image">商品主图</option>
+        <option value="product_detail_image">商品详情图</option>
+        <option value="product_poster">商品宣传图</option>
+        <option value="product_comparison_image">商品对比图</option>
+        <option value="product_document">商品说明书 PDF</option>
+        <option value="document_page" hidden>售后政策 PDF</option>
+        <option value="document_picture" hidden>售后示意图</option>
+        <option value="document_table" hidden>售后表格图片</option>
+      </select></label>
+      <label>更新标识（可选，默认使用文件名）<input name="source_key" maxlength="160"></label>
+      <label>文件<input name="file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" required></label>
+      <button type="submit">上传并建立索引</button>
+      <output id="asset-status" aria-live="polite"></output>
+    </form>
+  </dialog>
 
   <dialog id="product-dialog">
     <button class="dialog-close icon-button" data-close-dialog title="关闭" aria-label="关闭">

@@ -17,6 +17,8 @@ from starlette.concurrency import run_in_threadpool
 
 from . import auth
 from .agent import chat, graph
+from .asset_api import product_assets, router as asset_router
+from .asset_config import asset_settings
 from .api_models import (
     ChatResponse,
     CompareResponse,
@@ -174,6 +176,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.include_router(asset_router)
 
 
 @app.middleware("http")
@@ -454,10 +457,12 @@ def chat_endpoint(request: ChatRequest, http: Request) -> dict[str, Any]:
     response_model=ProductResponse,
     dependencies=[Depends(_api_access)],
 )
-def product_detail(sku: str) -> dict[str, Any]:
+def product_detail(sku: str, http: Request) -> dict[str, Any]:
     product = get_product(sku)
     if product is None:
         raise HTTPException(status_code=404, detail="product not found")
+    if asset_settings.enabled and http.state.principal.mode != 'demo':
+        product['assets'] = product_assets(sku)
     return product
 
 

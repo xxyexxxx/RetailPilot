@@ -13,6 +13,7 @@ data/*.db-shm
 data/*.db-journal
 data/*.log
 data/embeddings/
+data/assets/
 data/qdrant/
 data/external/
 artifacts/repair_jobs/

@@ -1,3 +1,12 @@
+.asset-evidence { margin-block: .65rem; overflow-wrap: anywhere; }
+.asset-evidence summary { cursor: pointer; font-size: .85rem; }
+.asset-evidence blockquote { margin: .55rem 0; white-space: pre-wrap; }
+.asset-preview { display: block; max-width: 100%; max-height: 14rem; object-fit: contain; border-radius: .5rem; margin-block: .5rem; }
+.asset-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .75rem; margin-top: 1rem; }
+.asset-gallery figure { margin: 0; }
+.asset-links { display: flex; flex-wrap: wrap; gap: .8rem; }
+#asset-status { overflow-wrap: anywhere; font-size: .875rem; }
+
 :root {
   color-scheme: light;
   --bg: #f3f5f2;

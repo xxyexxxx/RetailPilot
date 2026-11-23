@@ -1,0 +1,6 @@
+# Install on a supported Python/Torch platform. Model weights are loaded on demand.
+-r requirements-multimodal.txt
+-r requirements-policy-rag.txt
+docling>=2.70,<3
+transformers>=4.57,<6
+sentencepiece>=0.2,<1
