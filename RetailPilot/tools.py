@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from .catalog import get_product
 from .config import settings
-from .execution import tool_pool
 from .database import db_session
+from .execution import tool_pool
 from .policy import PolicyTopic, retrieve_policies
 from .retrieval import search_engine
 from .schemas import ParsedQuery
@@ -30,7 +30,7 @@ class CatalogSearchInput(BaseModel):
     session_id: str = Field(default="", max_length=100)
 
     @model_validator(mode="after")
-    def require_query(self) -> "CatalogSearchInput":
+    def require_query(self) -> CatalogSearchInput:
         if not self.query.strip() and not self.parsed_query:
             raise ValueError("query or parsed_query is required")
         return self
@@ -124,7 +124,9 @@ class ToolRegistry:
         return self.get_spec(name, scope).function
 
     def list(self, scope: str) -> list[str]:
-        return sorted(name for name, spec in self._specs.items() if scope in spec.scopes)
+        return sorted(
+            name for name, spec in self._specs.items() if scope in spec.scopes
+        )
 
     def schemas(self, scope: str) -> list[dict[str, Any]]:
         return [self.get_spec(name, scope).public_schema() for name in self.list(scope)]
@@ -157,19 +159,29 @@ class ToolRegistry:
             while True:
                 attempts += 1
                 try:
-                    remaining_ms = spec.timeout_ms if deadline is None else min(
-                        spec.timeout_ms, int((deadline - time.perf_counter()) * 1000)
+                    remaining_ms = (
+                        spec.timeout_ms
+                        if deadline is None
+                        else min(
+                            spec.timeout_ms, (deadline - time.perf_counter()) * 1000
+                        )
                     )
                     if remaining_ms <= 0:
                         raise _ToolTimeoutError("tool deadline exhausted")
-                    data, observation = self._invoke(spec, validated.model_dump(), remaining_ms)
+                    data, observation = self._invoke(
+                        spec, validated.model_dump(), remaining_ms, deadline=deadline
+                    )
                     break
                 except _ToolTimeoutError:
                     timed_out = True
-                    if attempts >= max_attempts or (deadline is not None and time.perf_counter() >= deadline):
+                    if attempts >= max_attempts or (
+                        deadline is not None and time.perf_counter() >= deadline
+                    ):
                         raise
                 except Exception as exc:
-                    if attempts >= max_attempts or (deadline is not None and time.perf_counter() >= deadline):
+                    if attempts >= max_attempts or (
+                        deadline is not None and time.perf_counter() >= deadline
+                    ):
                         raise _ToolExecutionError(str(exc)) from exc
 
             return {
@@ -205,7 +217,7 @@ class ToolRegistry:
         except _ToolTimeoutError as exc:
             error_type = "timeout"
             error_message = str(exc)[:400]
-        except Exception as exc:  # tool boundary converts failures to data
+        except Exception as exc:  # noqa: BLE001 - tool boundary converts failures to data
             error_type = "tool_error"
             error_message = str(exc)[:400]
         error = {"type": error_type, "message": error_message}
@@ -233,21 +245,30 @@ class ToolRegistry:
 
     @staticmethod
     def _invoke(
-        spec: ToolSpec, arguments: dict[str, Any], timeout_ms: int | None = None
+        spec: ToolSpec,
+        arguments: dict[str, Any],
+        timeout_ms: float | None = None,
+        *,
+        deadline: float | None = None,
     ) -> tuple[Any, Any]:
         """Run one tool attempt without blocking the caller past its deadline."""
 
         def call():
             data = spec.function(**arguments)
-            observation = spec.output_compressor(data) if spec.output_compressor else data
+            observation = (
+                spec.output_compressor(data) if spec.output_compressor else data
+            )
             return data, observation
 
         try:
-            return tool_pool.call(
-                call,
+            attempt_deadline = (
                 time.perf_counter()
-                + (spec.timeout_ms if timeout_ms is None else timeout_ms) / 1000,
+                + (spec.timeout_ms if timeout_ms is None else timeout_ms) / 1000
             )
+            # Preserve the caller's absolute budget; rounding must not start a second timed-out call.
+            if deadline is not None:
+                attempt_deadline = min(attempt_deadline, deadline)
+            return tool_pool.call(call, attempt_deadline)
         except TimeoutError as exc:
             raise _ToolTimeoutError(f"{spec.name} deadline exhausted") from exc
 
@@ -262,7 +283,9 @@ class _ToolExecutionError(RuntimeError):
 
 def _parsed_query(payload: dict[str, Any]) -> ParsedQuery:
     allowed = {item.name for item in fields(ParsedQuery)}
-    return ParsedQuery(**{key: value for key, value in payload.items() if key in allowed})
+    return ParsedQuery(
+        **{key: value for key, value in payload.items() if key in allowed}
+    )
 
 
 def catalog_search(
@@ -338,7 +361,9 @@ def order_query(
             # No lookup criteria means the backwards-compatible latest-order
             # behavior. Product/date lookups return several candidates so the
             # planner can ask the user to disambiguate instead of guessing.
-            effective_limit = 1 if not any((product_query, created_after, created_before)) else limit
+            effective_limit = (
+                1 if not any((product_query, created_after, created_before)) else limit
+            )
             rows = connection.execute(
                 f"""
                 SELECT o.*, p.title, p.image_url, p.category, p.category_label,
@@ -347,7 +372,7 @@ def order_query(
                 FROM orders o
                 JOIN products p ON p.sku = o.sku
                 LEFT JOIN product_commerce pc ON pc.sku = p.sku
-                WHERE {' AND '.join(clauses)}
+                WHERE {" AND ".join(clauses)}
                 ORDER BY o.created_at DESC LIMIT ?
                 """,
                 [*params, effective_limit],
@@ -404,7 +429,8 @@ def order_query(
                     {
                         "order_id": order["order_id"],
                         "field": "latest_logistics",
-                        "value": events[-1].get("description") or events[-1].get("status"),
+                        "value": events[-1].get("description")
+                        or events[-1].get("status"),
                         "source": "local_logistics_events",
                     },
                     {

@@ -12,7 +12,6 @@ from threading import Lock
 from urllib.parse import quote
 
 from .asset_config import asset_settings as config
-from .asset_embeddings import text_encode, text_version, visual_encoder, visual_version
 from .asset_parsing import (
     AssetParseError,
     DocumentElement,
@@ -24,7 +23,7 @@ from .asset_store import detect_mime, store
 from .database import db_session, json_dumps, json_loads
 from .execution import call_deadline
 from .policy_ingestion import approximate_token_count
-from .text import tokenize, vector_to_blob
+from .text import tokenize
 
 ASSET_TYPES = frozenset(
     {
@@ -323,44 +322,6 @@ def terms(text: str) -> str:
     return " ".join(dict.fromkeys(tokenize(text, include_expansion=False)))
 
 
-def _vectors(
-    records: list[tuple], elements: dict[str, DocumentElement]
-) -> tuple[list[tuple], list[str]]:
-    output, warnings = [], []
-    spaces = ("text", "visual") if config.visual_enabled else ("text",)
-    for space in spaces:
-        version = text_version() if space == "text" else visual_version()
-        if space == "text":
-            rows = [
-                (cid, chunk.search_text)
-                for cid, chunk in records
-                if chunk.search_text.strip()
-            ]
-        else:
-            rows = [
-                (cid, elements[chunk.element_id].preview_key)
-                for cid, chunk in records
-                if elements[chunk.element_id].element_type == "image"
-                and elements[chunk.element_id].preview_key
-            ]
-        try:
-            for i in range(0, len(rows), 16):
-                batch = rows[i : i + 16]
-                if space == "text":
-                    vectors = text_encode([value for _, value in batch])
-                else:
-                    vectors = visual_encoder().images(
-                        [store().read(key) for _, key in batch]
-                    )
-                for (cid, _), vector in zip(batch, vectors, strict=True):
-                    output.append(
-                        (cid, space, version, len(vector), vector_to_blob(vector))
-                    )
-        except Exception:  # noqa: BLE001 - optional model boundary
-            warnings.append(f"{space}_index_unavailable")
-    return output, warnings
-
-
 def process_asset(asset_id: str, *, retry: bool = False) -> dict | None:
     token = secrets.token_hex(16)
     with db_session() as db:
@@ -419,7 +380,7 @@ def process_asset(asset_id: str, *, retry: bool = False) -> dict | None:
         ]
         if not chunks:
             raise ValueError("no_searchable_elements")
-        vectors, warnings = _vectors(chunks, elements) if asset["sku"] else ([], [])
+        warnings = []
         expired = time.perf_counter() >= call_deadline.get()
         if expired:
             raise TimeoutError("asset_deadline")
@@ -431,6 +392,23 @@ def process_asset(asset_id: str, *, retry: bool = False) -> dict | None:
             ).fetchone()
             if not current or current["processing_token"] != token:
                 raise RuntimeError("asset_processing_superseded")
+            from .knowledge import put_unit, source
+
+            sid = f"asset:{asset_id}"
+            source(
+                db,
+                source_id=sid,
+                domain="product" if asset["sku"] else "policy",
+                owner_id=asset["sku"] or asset["doc_id"],
+                asset_id=asset_id,
+                source_format="pdf"
+                if asset["mime_type"] == "application/pdf"
+                else "image",
+                source_uri=f"asset:{asset_id}",
+                version=asset["source_version"] or asset["revision"],
+                content_hash=asset["revision"],
+            )
+            db.execute("DELETE FROM knowledge_units WHERE source_id=?", (sid,))
             db.execute("DELETE FROM asset_elements WHERE asset_id=?", (asset_id,))
             db.executemany(
                 """INSERT INTO asset_elements VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -463,60 +441,22 @@ def process_asset(asset_id: str, *, retry: bool = False) -> dict | None:
             )
             for cid, chunk in chunks:
                 el = elements[chunk.element_id]
-                db.execute(
-                    "INSERT INTO asset_chunks VALUES(?,?,?,?,?,?,?,?)",
-                    (
-                        cid,
-                        asset_id,
-                        chunk.element_id,
-                        chunk.evidence_type,
-                        chunk.content,
-                        chunk.search_text,
-                        json_dumps(chunk.structured),
-                        INDEX_VERSION,
-                    ),
+                put_unit(
+                    db,
+                    unit_id=cid,
+                    source_id=sid,
+                    element_id=chunk.element_id,
+                    modality=el.element_type,
+                    evidence_type=chunk.evidence_type,
+                    evidence_text=chunk.content,
+                    search_text=chunk.search_text,
+                    structured=chunk.structured,
+                    section_path=el.section_path,
+                    page_no=el.page_no,
+                    ordinal=el.reading_order,
+                    parser_version=parsed.parser_version,
+                    element_ids=[ids[o] for o in el.metadata.get("context_orders", [])],
                 )
-                db.executemany(
-                    "INSERT INTO asset_chunk_elements VALUES(?,?)",
-                    [
-                        (cid, eid)
-                        for eid in dict.fromkeys(
-                            [
-                                chunk.element_id,
-                                *(
-                                    ids[o]
-                                    for o in el.metadata.get("context_orders", [])
-                                ),
-                            ]
-                        )
-                    ],
-                )
-                indexed = terms(chunk.search_text)
-                if indexed and asset["sku"]:
-                    db.execute("INSERT INTO asset_fts VALUES(?,?)", (cid, indexed))
-                if asset["doc_id"]:
-                    db.execute(
-                        """INSERT INTO policy_chunks(chunk_id,doc_id,chunk_type,ordinal,section_path,
-                           page_no,content,contextualized_content,token_count,content_hash,metadata_json)
-                           VALUES(?,?,'leaf',?,?,?,?,?,?,?,?)""",
-                        (
-                            cid,
-                            asset["doc_id"],
-                            el.reading_order,
-                            el.section_path,
-                            el.page_no,
-                            chunk.content,
-                            chunk.search_text,
-                            approximate_token_count(chunk.search_text),
-                            _id(cid, chunk.content),
-                            json_dumps({"asset_id": asset_id}),
-                        ),
-                    )
-                    if indexed:
-                        db.execute(
-                            "INSERT INTO policy_chunk_fts VALUES(?,?)", (cid, indexed)
-                        )
-            db.executemany("INSERT INTO asset_vectors VALUES(?,?,?,?,?)", vectors)
             db.execute(
                 """UPDATE assets SET status=?, error_code=?, processing_token='', revision=?,
                    updated_at=CURRENT_TIMESTAMP WHERE asset_id=?""",
@@ -546,6 +486,21 @@ def process_asset(asset_id: str, *, retry: bool = False) -> dict | None:
     finally:
         if context_token is not None:
             call_deadline.reset(context_token)
+    result = get_asset(asset_id)
+    if result and result["status"] in READY:
+        from .knowledge_index import build
+
+        domain = "product" if result["sku"] else "policy"
+        # Neural text and visual vectors are optional derived indexes.
+        reports = [build(domain, source_id=f"asset:{asset_id}")]
+        if config.visual_enabled and result["sku"]:
+            reports.append(build(domain, space="visual", source_id=f"asset:{asset_id}"))
+        if any(report["failed"] for report in reports):
+            with db_session() as db:
+                db.execute(
+                    "UPDATE assets SET status='partial',error_code=error_code||',index_unavailable' WHERE asset_id=?",
+                    (asset_id,),
+                )
     return get_asset(asset_id)
 
 

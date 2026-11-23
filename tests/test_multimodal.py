@@ -13,7 +13,7 @@ from PIL import Image
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from RetailPilot import asset_ingestion, asset_retrieval
+from RetailPilot import asset_ingestion, knowledge_index, knowledge_retrieval
 from RetailPilot.api import app
 from RetailPilot.asset_config import asset_settings as config
 from RetailPilot.asset_evidence import (
@@ -34,13 +34,19 @@ from RetailPilot.asset_parsing import (
     VisionProvider,
     enrich_context,
 )
-from RetailPilot.asset_qdrant import generation_status, sync_visual
-from RetailPilot.asset_retrieval import aggregate_routes, retrieve_product_assets
 from RetailPilot.asset_store import download_image, store
 from RetailPilot.catalog import get_product
 from RetailPilot.config import settings
 from RetailPilot.database import db_session, init_db
 from RetailPilot.grounding import claim, policy_citation, validate_claim_citations
+from RetailPilot.knowledge_qdrant import status as generation_status
+from RetailPilot.knowledge_qdrant import sync as sync_visual
+from RetailPilot.knowledge_retrieval import (
+    RetrievalFilters,
+    RetrievalQuery,
+    aggregate_skus,
+    retrieve,
+)
 from RetailPilot.policy import retrieve_policies
 from RetailPilot.policy_ingestion import PolicyDocumentInput, ingest_policy_documents
 from RetailPilot.retrieval import search_engine
@@ -87,8 +93,6 @@ def mm(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "parser", "pypdf")
     monkeypatch.setattr(config, "ocr", "off")
     monkeypatch.setattr(config, "vlm_model", "")
-    monkeypatch.setattr(config, "qdrant_url", "")
-    monkeypatch.setattr(config, "text_model", "hash")
     init_db()
     with db_session() as db:
         db.executemany(
@@ -141,23 +145,25 @@ def test_crud_atomic_mapping_content_dedup_and_update(mm, monkeypatch):
         add(png(), sku="not-catalog")
     with pytest.raises(ValueError):
         store().path("../catalog.db")
-    routes, _ = retrieve_product_assets("主动降噪")
-    ranks, evidence = aggregate_routes(routes)
-    assert ranks["asset_bm25"] == ["mm-pack"]
-    assert len(evidence["mm-pack"]) == 1
-    cite_id = evidence["mm-pack"][0]["chunk_id"]
+    hits, routes, _ = retrieve(
+        RetrievalQuery("主动降噪", "product"), RetrievalFilters()
+    )
+    evidence = aggregate_skus(hits)
+    assert {hit.metadata["sku"] for hit in routes["knowledge_bm25"]} == {"mm-pack"}
+    assert len(evidence["mm-pack"]["hits"]) == 1
+    cite_id = evidence["mm-pack"]["hits"][0].unit_id
     assert hydrate(cite_id).text_content == "主动降噪"
     assert add(png("blue")) == first
     assert delete_asset(first) and delete_asset(second)
     assert hydrate(cite_id) is None
     with db_session() as db:
-        for name in (
-            "asset_chunks",
-            "asset_vectors",
-            "asset_chunk_elements",
-            "asset_fts",
-        ):
-            assert db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0] == 0
+        assert (
+            db.execute(
+                "SELECT COUNT(*) FROM knowledge_units JOIN knowledge_sources USING(source_id) WHERE asset_id IS NOT NULL"
+            ).fetchone()[0]
+            == 0
+        )
+        assert not db.execute("PRAGMA foreign_key_check").fetchall()
 
 
 def test_caption_text_routes_hard_filters_and_grounded_poster(mm, monkeypatch):
@@ -187,8 +193,16 @@ def test_caption_text_routes_hard_filters_and_grounded_poster(mm, monkeypatch):
     )
     result = search_engine.search(query, mode="hybrid")
     assert [p["sku"] for p in result["products"]] == ["mm-pack"]
-    assert result["retrieval"]["routes"]["asset_bm25"] == ["mm-pack"]
-    assert result["retrieval"]["routes"]["asset_text"] == ["mm-pack"]
+    assert set(result["retrieval"]["routes"]) <= {
+        "knowledge_bm25",
+        "knowledge_dense",
+        "knowledge_visual",
+    }
+    assert result["retrieval"]["routes"]["knowledge_bm25"]
+    assert all(
+        hydrate(uid).sku == "mm-pack"
+        for uid in result["retrieval"]["routes"]["knowledge_bm25"]
+    )
     assert result["products"][0]["asset_evidence"][0]["asset_id"] == aid
     assert result["products"][0]["constraint_profile"]["must_have_match"] == 1
     answer = product_asset_answer("宣传图的水杯侧袋规格是多少？", result["products"])
@@ -229,37 +243,49 @@ class ColorEncoder:
 def test_visual_chinese_and_image_queries_mirror_and_model_failure(mm, monkeypatch):
     monkeypatch.setattr(config, "visual_enabled", True)
     encoder = ColorEncoder()
-    monkeypatch.setattr(asset_ingestion, "visual_encoder", lambda: encoder)
-    monkeypatch.setattr(asset_retrieval, "visual_encoder", lambda: encoder)
+    monkeypatch.setattr(knowledge_index, "visual_encoder", lambda: encoder)
+    monkeypatch.setattr(knowledge_retrieval, "visual_encoder", lambda: encoder)
     green = add(png("green"), kind="product_main_image")
     blue = add(png("blue"), sku="mm-expensive", kind="product_main_image")
-    routes, errors = retrieve_product_assets("绿色外观")
-    assert not errors and [hit.asset_id for hit in routes["asset_visual"]] == [green]
+    hits, routes, trace = retrieve(
+        RetrievalQuery("绿色外观", "product"), RetrievalFilters()
+    )
+    assert not trace["errors"] and [
+        hit.metadata["asset_id"] for hit in routes["knowledge_visual"]
+    ] == [green]
     assert (
-        retrieve_product_assets("", image=png("blue"))[0]["asset_visual"][0].asset_id
+        retrieve(RetrievalQuery("", "product", image=png("blue")), RetrievalFilters())[
+            1
+        ]["knowledge_visual"][0].metadata["asset_id"]
         == blue
     )
-
     qdrant = pytest.importorskip("qdrant_client")
-    from RetailPilot import asset_qdrant
+    from RetailPilot import knowledge_qdrant
 
     client = qdrant.QdrantClient(":memory:")
-    monkeypatch.setattr(config, "qdrant_url", "http://fixture")
-    monkeypatch.setattr(asset_qdrant, "_client", lambda *_: client)
-    assert sync_visual() == {"points": 2, "synchronized": True}
-    assert retrieve_product_assets("绿色外观")[0]["asset_visual"][0].asset_id == green
+    monkeypatch.setenv("RETAILPILOT_KNOWLEDGE_QDRANT_URL", "http://fixture")
+    monkeypatch.setattr(knowledge_qdrant, "_client", lambda *_: client)
+    assert sync_visual()["synchronized"]
+    assert (
+        retrieve(RetrievalQuery("绿色外观", "product"), RetrievalFilters())[1][
+            "knowledge_visual"
+        ][0].metadata["asset_id"]
+        == green
+    )
     delete_asset(green)
     with db_session() as db:
         assert not generation_status(db)["synchronized"]
-    assert sync_visual()["points"] == 1
-    assert client.count(config.qdrant_collection, exact=True).count == 1
+    assert sync_visual()["synchronized"]
 
     def broken():
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(asset_retrieval, "visual_encoder", broken)
-    routes, errors = retrieve_product_assets("绿色外观")
-    assert errors == {"visual": "RuntimeError"} and "asset_visual" not in routes
+    monkeypatch.setattr(knowledge_retrieval, "visual_encoder", broken)
+    _, routes, trace = retrieve(
+        RetrievalQuery("绿色外观", "product"), RetrievalFilters()
+    )
+    assert trace["errors"] == {"knowledge_visual": "RuntimeError"}
+    assert "knowledge_visual" not in routes
 
 
 def test_visual_verification_real_image_transport_and_refusal(mm, monkeypatch):
@@ -449,7 +475,7 @@ def test_structured_table_and_context_plus_visual_policy(mm, monkeypatch):
     with db_session() as db:
         assert (
             db.execute(
-                "SELECT COUNT(*) FROM asset_chunk_elements WHERE chunk_id=?",
+                "SELECT COUNT(*) FROM knowledge_unit_elements WHERE unit_id=?",
                 (figure["chunk_id"],),
             ).fetchone()[0]
             == 2

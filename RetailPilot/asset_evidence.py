@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .asset_config import asset_settings as config
-from .asset_ingestion import asset_url
-from .asset_retrieval import aggregate_routes, retrieve_product_assets
 from .asset_store import store
-from .database import db_session, json_loads
+from .database import db_session
 from .execution import BoundedPool, call_deadline
 from .text import tokenize
 
@@ -28,127 +25,13 @@ _POLICY_RIGHTS = re.compile(
 )
 
 
-@dataclass
-class EvidencePackage:
-    evidence_id: str
-    chunk_id: str
-    asset_id: str
-    element_id: str
-    sku: str | None
-    doc_id: str | None
-    evidence_type: str
-    text_content: str
-    structured_content: dict | None
-    source_location: dict
-    provenance: dict
-    confidence: float | None = None
-    verification_status: str = "unverified"
-    catalog_fields: dict = field(default_factory=dict)
-
-
-def _preview_url(asset_id: str, element_id: str) -> str:
-    return f"/api/assets/{asset_id}/elements/{element_id}/preview"
-
-
-def hydrate(chunk_id: str, *, include_catalog: bool = False) -> EvidencePackage | None:
-    if not config.enabled:
-        return None
-    with db_session() as db:
-        row = db.execute(
-            """
-            SELECT ch.*,a.sku,a.doc_id,a.asset_type,a.source_version,a.source_uri,a.storage_uri,
-                   a.revision,e.page_no,e.bbox_json,e.section_path,e.preview_key,
-                   e.element_type,e.metadata_json,e.parser_version,e.enrichment_version,
-                   d.version AS current_version,d.status AS document_status,d.source_name
-            FROM asset_chunks ch JOIN assets a USING(asset_id) JOIN asset_elements e USING(element_id)
-            LEFT JOIN policy_documents d ON d.doc_id=a.doc_id
-            WHERE ch.chunk_id=? AND a.status IN ('ready','partial')
-              AND (a.doc_id IS NULL OR (a.source_version=d.version AND d.status='active'))
-            """,
-            (chunk_id,),
-        ).fetchone()
-        if not row:
-            return None
-        page = db.execute(
-            """SELECT element_id FROM asset_elements
-            WHERE asset_id=? AND element_type='page' AND page_no=? AND preview_key IS NOT NULL
-            LIMIT 1""",
-            (row["asset_id"], row["page_no"]),
-        ).fetchone()
-    if not store().path(row["storage_uri"]).is_file():
-        return None
-    meta = json_loads(row["metadata_json"], {})
-    preview = row["preview_key"] and store().path(row["preview_key"]).is_file()
-    catalog = {}
-    if include_catalog and row["sku"]:
-        from .catalog import get_products
-
-        products = get_products([row["sku"]])
-        catalog = products[0] if products else {}
-        catalog = {
-            key: catalog.get(key)
-            for key in ("title", "brand", "stock", "price", "attributes", "features")
-        }
-    evidence_type = row["evidence_type"]
-    if (
-        row["sku"]
-        and evidence_type == "ocr_observed"
-        and row["asset_type"] in {"product_poster", "product_comparison_image"}
-    ):
-        evidence_type = "seller_advertised"
-    return EvidencePackage(
-        row["chunk_id"],
-        row["chunk_id"],
-        row["asset_id"],
-        row["element_id"],
-        row["sku"],
-        row["doc_id"],
-        evidence_type,
-        row["content"],
-        json_loads(row["structured_json"], None),
-        {
-            "page_no": row["page_no"],
-            "bbox": json_loads(row["bbox_json"], None),
-            "section_path": row["section_path"],
-            "source_uri": asset_url(row["asset_id"], row["revision"]),
-            "asset_revision": row["revision"],
-            "source_version": row["source_version"] or row["revision"],
-            "preview_url": _preview_url(row["asset_id"], row["element_id"])
-            if preview
-            else None,
-            "page_preview_url": _preview_url(row["asset_id"], page["element_id"])
-            if page
-            else None,
-        },
-        {
-            "source": row["source_name"] or "product_asset",
-            "asset_type": row["asset_type"],
-            "element_type": row["element_type"],
-            "parser_version": row["parser_version"],
-            "enrichment_version": row["enrichment_version"],
-            **{
-                key: meta[key]
-                for key in (
-                    "source_ref",
-                    "provenance",
-                    "context_element_ids",
-                    "caption",
-                    "ocr_observed",
-                    "vlm_observed",
-                    "seller_advertised",
-                    "image_type",
-                    "unknown",
-                )
-                if key in meta
-            },
-        },
-        verification_status=(
-            "source_text"
-            if row["element_type"] in {"text", "heading", "table"}
-            else "unverified"
-        ),
-        catalog_fields=catalog,
-    )
+from .knowledge_evidence import EvidencePackage, hydrate
+from .knowledge_retrieval import (
+    RetrievalFilters,
+    RetrievalQuery,
+    aggregate_skus,
+    retrieve,
+)
 
 
 def hydrate_asset(asset_id: str, *, limit: int = 20) -> list[EvidencePackage]:
@@ -156,33 +39,11 @@ def hydrate_asset(asset_id: str, *, limit: int = 20) -> list[EvidencePackage]:
         ids = [
             row["chunk_id"]
             for row in db.execute(
-                "SELECT chunk_id FROM asset_chunks WHERE asset_id=? ORDER BY rowid LIMIT ?",
+                "SELECT unit_id AS chunk_id FROM knowledge_units JOIN knowledge_sources USING(source_id) WHERE asset_id=? ORDER BY ordinal LIMIT ?",
                 (asset_id, limit),
             )
         ]
     return [evidence for cid in ids if (evidence := hydrate(cid))]
-
-
-def public_evidence(hit: dict) -> dict | None:
-    package = hydrate(hit["chunk_id"])
-    if (
-        package is None
-        or package.sku != hit["sku"]
-        or package.asset_id != hit["asset_id"]
-    ):
-        return None
-    payload = asdict(package)
-    # Captions can support discovery. They do not serve as answer text.
-    meta = payload["provenance"]
-    payload["matched_description"] = (
-        meta.get("seller_advertised")
-        or meta.get("vlm_observed")
-        or meta.get("caption")
-        or package.text_content
-    )[:480]
-    payload["text_content"] = package.text_content[:650]
-    payload["routes"] = hit["routes"]
-    return payload
 
 
 def requires_visual(query: str) -> bool:
@@ -232,6 +93,8 @@ def asset_citation(
     package: EvidencePackage, quote: str, *, verified: bool = False
 ) -> dict:
     return {
+        "unit_id": package.unit_id,
+        "source_id": package.source_id,
         "asset_id": package.asset_id,
         "element_id": package.element_id,
         "chunk_id": package.chunk_id,
@@ -317,13 +180,30 @@ def product_asset_answer(query: str, products: list[dict]) -> dict:
             "needed_visual": config.enabled and requires_asset(query),
         }
     skus = [product["sku"] for product in products[:4]]
-    hits, _ = retrieve_product_assets(
-        query,
-        where=f"p.sku IN ({','.join('?' for _ in skus)})",
-        params=skus,
-        in_stock=False,
-    )
-    _, results = aggregate_routes(hits)
+    results = {}
+    for product in products[:4]:
+        if product.get("knowledge_evidence"):
+            results[product["sku"]] = [
+                {"chunk_id": item["unit_id"]}
+                for item in product["knowledge_evidence"]
+                if item.get("asset_id")
+            ]
+    if not results:
+        hits, _, _ = retrieve(
+            RetrievalQuery(query, "product"),
+            RetrievalFilters(
+                product_where=f"p.sku IN ({','.join('?' for _ in skus)})",
+                product_params=skus,
+            ),
+        )
+        results = {
+            sku: [
+                {"chunk_id": hit.unit_id}
+                for hit in group["hits"]
+                if hit.metadata.get("asset_id")
+            ]
+            for sku, group in aggregate_skus(hits).items()
+        }
     sources, lines, citations = [], [], []
     calls = 0
     used_images: set[tuple[str, int | None, str]] = set()

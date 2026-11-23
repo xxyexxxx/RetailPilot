@@ -5,16 +5,15 @@ import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 
 from .database import (
     db_session,
     init_db,
     json_dumps,
-    refresh_policy_fts,
     utc_now,
 )
-
 
 _HEADING = re.compile(r"(?m)^(#{1,6})\s+(.+?)\s*$\n?")
 _TEXT_UNIT = re.compile(r"[^\n。！？；;]+[。！？；;]?|\n+")
@@ -85,7 +84,9 @@ def _sections(markdown: str, fallback_title: str) -> list[dict[str, Any]]:
         stack = stack[: level - 1]
         stack.append(heading)
         body_start = match.end()
-        body_end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
+        body_end = (
+            matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
+        )
         raw_body = markdown[body_start:body_end]
         body = raw_body.strip()
         if not body:
@@ -101,11 +102,17 @@ def _sections(markdown: str, fallback_title: str) -> list[dict[str, Any]]:
     if result:
         return result
     content = _HEADING.sub("", markdown).strip()
-    return [{"path": fallback_title, "content": content, "start": markdown.find(content)}]
+    return [
+        {"path": fallback_title, "content": content, "start": markdown.find(content)}
+    ]
 
 
 def _units(text: str) -> list[str]:
-    return [match.group(0).strip() for match in _TEXT_UNIT.finditer(text) if match.group(0).strip()]
+    return [
+        match.group(0).strip()
+        for match in _TEXT_UNIT.finditer(text)
+        if match.group(0).strip()
+    ]
 
 
 def _child_windows(
@@ -381,28 +388,10 @@ def ingest_policy_documents(
                     utc_now(),
                 ),
             )
-            connection.execute(
-                """DELETE FROM policy_chunks WHERE doc_id = ? AND chunk_id NOT IN
-                (SELECT chunk_id FROM asset_chunks)""", (document.doc_id,)
-            )
-            connection.executemany(
-                """
-                INSERT INTO policy_chunks(
-                    chunk_id, doc_id, parent_chunk_id, chunk_type, ordinal,
-                    section_path, page_no, char_start, char_end, content,
-                    contextualized_content, token_count, content_hash,
-                    metadata_json
-                ) VALUES(
-                    :chunk_id, :doc_id, :parent_chunk_id, :chunk_type, :ordinal,
-                    :section_path, :page_no, :char_start, :char_end, :content,
-                    :contextualized_content, :token_count, :content_hash,
-                    :metadata_json
-                )
-                """,
-                chunks,
-            )
-            chunk_count += len(chunks)
-        refresh_policy_fts(connection, doc_ids)
+            from .knowledge import write_markdown
+
+            write_markdown(connection, document, chunks)
+            chunk_count += sum(item["chunk_type"] != "parent" for item in chunks)
         connection.execute(
             """
             INSERT INTO policy_ingestion_runs(
