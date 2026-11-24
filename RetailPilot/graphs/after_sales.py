@@ -378,6 +378,9 @@ def after_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                 ),
                 assess=runtime.assess_policy_evidence,
                 started_at=policy_started,
+                order_context=chained_order,
+                user_id=state["user_id"],
+                original_question=text,
             )
             evidence_assessment = followup_result["assessment"]
             grounding_documents = followup_result["documents"]
@@ -411,6 +414,14 @@ def after_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
             citations = []
         elif route == "order_fact":
             if order_payload:
+                from ..evidence_runtime import mode as evidence_mode, order_workflow
+                if evidence_mode()!="legacy":
+                    checked=order_workflow(text,order_payload,state["user_id"])
+                    tool_traces.extend(checked["trace"])
+                    if checked["verdict"]["next_action"]!="answer":
+                        return {"branch_outputs":[{**runtime._task_fields(task),"branch":"after_sales",
+                            "response":"无法核验该订单的归属或当前事实。","citations":[],"claims":[],
+                            "grounding":{"pass":True,"claims":0,"issues":[]}}],"trace":tool_traces}
                 first_args = (plan.get("steps") or [{}])[0].get("args") or {}
                 request = str(first_args.get("request") or "status")
                 latest = (order_payload.get("events") or [{}])[-1]
@@ -603,6 +614,31 @@ def after_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
         "tool_failure": execution_failure,
     }
 
+    # Cross-domain technical facts retain their product/asset citations. They
+    # never enter policy clauses or supply warranty eligibility.
+    if not evidence_rejected and (followup_result or {}).get("technical_documents"):
+        if not grounding_documents:
+            payload["response"]="已核对到与当前商品关联的技术资料："
+            payload["required_slots"]=[]
+        from ..knowledge_evidence import hydrate
+        from ..asset_evidence import asset_citation
+        from ..catalog import get_products
+        sources=[]
+        observations={o["evidence_id"]:o for o in (followup_result.get("verdict") or {}).get("visual_observations",[])}
+        for ref in followup_result["technical_documents"]:
+            package=hydrate(ref["unit_id"]) if ref.get("unit_id") else None
+            if not package or not package.sku or not package.asset_id:
+                continue
+            obs=observations.get(ref["evidence_id"])
+            value=obs["observation"] if obs else package.text_content
+            if not value:
+                continue
+            citation=asset_citation(package,value,verified=bool(obs))
+            sources.append(citation);payload["citations"].append(citation)
+            claims.append(runtime.claim(value,citation,claim_type="asset_observation"))
+            payload["response"]+="\n技术资料原文/图示观察："+value
+        payload["products"]=get_products(list(dict.fromkeys(r["target_id"] for r in followup_result["technical_documents"])))
+        payload["_asset_sources"]=sources
     payload = runtime._ground_output(
         payload, claims, policy_documents=grounding_documents
     )
@@ -615,6 +651,7 @@ def after_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                     "question": str(plan.get("standalone_query") or text),
                     "documents": runtime.deepcopy(grounding_documents),
                     "tool_results": {
+                        "technical_evidence":runtime.deepcopy((followup_result or {}).get("technical_documents",[])),
                         "product_context": runtime.deepcopy(
                             (policy_payload or {}).get("product_context") or {}
                         ),

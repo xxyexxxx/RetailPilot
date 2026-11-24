@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import importlib.metadata
 import io
 import json
@@ -14,7 +13,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-import requests
 
 from .asset_config import asset_settings as config
 from .asset_store import store
@@ -80,42 +78,13 @@ class TesseractOCR:
 class VisionProvider:
     """OpenAI-compatible Chat Completions, including self-hosted endpoints."""
 
-    def invoke(self, instruction: str, query: str, images: list[bytes]) -> dict:
-        if not config.vlm_url or not config.vlm_model or not images:
-            raise RuntimeError("vision_model_unavailable")
-        content = [{"type": "text", "text": query[:3000]}]
-        content.extend(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": "data:image/png;base64,"
-                    + base64.b64encode(image).decode("ascii")
-                },
-            }
-            for image in images
-        )
-        headers = (
-            {"Authorization": f"Bearer {config.vlm_key}"} if config.vlm_key else {}
-        )
-        with requests.post(
-            config.vlm_url.rstrip("/") + "/chat/completions",
-            headers=headers,
-            json={
-                "model": config.vlm_model,
-                "max_tokens": config.verification_tokens,
-                "messages": [
-                    {"role": "system", "content": instruction},
-                    {"role": "user", "content": content},
-                ],
-            },
-            timeout=_remaining(config.verification_timeout),
-            allow_redirects=False,
-        ) as response:
-            response.raise_for_status()
-            result = json.loads(response.json()["choices"][0]["message"]["content"])
-        if not isinstance(result, dict):
-            raise TypeError("invalid_vision_output")
-        return result
+    def invoke(self, instruction: str, query: str, images: list[bytes], *, task_type: str = "visual_verification") -> dict:
+        from .multimodal_model import ImageInput, gateway
+        return gateway.generate(task_type=task_type,
+            messages=[{"role":"system","content":instruction},{"role":"user","content":query[:3000]}],
+            images=[ImageInput(source_kind="asset_bytes",data=data) for data in images],
+            timeout_seconds=_remaining(config.verification_timeout),
+            lane="offline" if task_type=="image_description" else "online",max_tokens=config.verification_tokens)
 
     def describe(self, png: bytes) -> dict:
         result = self.invoke(
@@ -126,6 +95,7 @@ class VisionProvider:
             "Keep explicit seller claims separate. Never infer unobservable capabilities.",
             "Describe this asset for retrieval.",
             [png],
+            task_type="image_description",
         )
         return {
             key: str(result.get(key) or "")[:1800]
@@ -151,7 +121,9 @@ class VisionProvider:
 
 
 def _enrich_image(element: DocumentElement, warnings: list[str]) -> None:
-    if not element.preview_key or (config.ocr == "off" and not config.vlm_model):
+    from .multimodal_model import ready_for_vision
+    vision_available=ready_for_vision("image_description")
+    if not element.preview_key or (config.ocr == "off" and not vision_available):
         return
     png = store().read(element.preview_key)
     if config.ocr != "off":
@@ -161,7 +133,7 @@ def _enrich_image(element: DocumentElement, warnings: list[str]) -> None:
             element.metadata["ocr_observed"] = TesseractOCR().read(png)
         except Exception:  # noqa: BLE001 - optional OCR adapter
             warnings.append("ocr_failed")
-    if config.vlm_model:
+    if vision_available:
         try:
             result = VisionProvider().describe(png)
             element.metadata.update(

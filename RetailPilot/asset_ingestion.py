@@ -54,6 +54,10 @@ def _distribution(name: str) -> str:
 
 
 def parser_signature(mime: str) -> str:
+    from .multimodal_model import config as model_config
+    reasoning=model_config("image_description")
+    from .multimodal_model import ready_for_vision
+    vision_capable=ready_for_vision("image_description")
     parser = (
         (config.parser, _distribution(config.parser), config.docling_artifacts)
         if mime == "application/pdf"
@@ -69,6 +73,7 @@ def parser_signature(mime: str) -> str:
         config.ocr_languages,
         config.vlm_url,
         config.vlm_model,
+        reasoning.model, reasoning.base_url, str(reasoning.vision), str(vision_capable),
         str(config.tile_height),
         str(config.max_pixels),
         str(config.max_pages),

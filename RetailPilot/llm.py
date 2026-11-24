@@ -126,6 +126,7 @@ def _invoke_json(
     prompt_kind: str = "json",
     max_tokens: int | None = None,
     prompt_version: str = "v1",
+    output_schema: type[BaseModel] | None = None,
 ) -> str:
     """以 JSON Object 模式调用 LLM；模型/中转不支持 json_object 时降级为普通调用。
 
@@ -140,6 +141,7 @@ def _invoke_json(
                 temperature=temperature,
                 json_mode=True,
                 max_tokens=output_cap,
+                **({"output_schema":output_schema} if output_schema else {}),
             ),
             prompt,
             prompt_kind=prompt_kind,

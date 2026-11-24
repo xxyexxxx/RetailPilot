@@ -109,6 +109,7 @@ hallucinated_spans 必须逐字摘自最终答案；仅遗漏条件时可为空�
     raw = _invoke_json(
         build_cached_messages(prefix, payload),
         prompt_kind="faithfulness_check",
+        output_schema=FaithfulnessResult,
         prompt_version=prefix_fingerprint(prefix),
     )
     result = FaithfulnessResult.model_validate(json.loads(raw))
@@ -138,6 +139,7 @@ def repair_answer_faithfulness(
     raw = _invoke_json(
         build_cached_messages(prefix, {**payload, "critique": critique.model_dump()}),
         prompt_kind="faithfulness_repair",
+        output_schema=FaithfulnessRepair,
         prompt_version=prefix_fingerprint(prefix),
     )
     return FaithfulnessRepair.model_validate(json.loads(raw))

@@ -1,5 +1,7 @@
 # RetailPilot 多模态 RAG 运行手册
 
+当前证据决策与生成式模型基础设施已进一步升级，见[统一证据报告](unified-evidence.md)和[源码调用链](unified-evidence-call-chains.md)。以下知识层说明及历史测量保留其阶段语境。
+
 当前实现采用统一 KnowledgeUnit。商品字段、图片 OCR/描述和说明书共用商品文本索引；Markdown 和政策 PDF 共用政策文本索引。视觉向量保持独立空间。完整架构、迁移、测量和已知边界见 [统一知识检索报告](unified-knowledge.md)，代码执行过程见 [调用链](unified-knowledge-call-chains.md)。
 
 ## 启用

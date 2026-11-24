@@ -1,0 +1,555 @@
+{
+  "EvidenceBundle": {
+    "$defs": {
+      "EvidenceRef": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "knowledge",
+              "catalog",
+              "order",
+              "visual"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "domain": {
+            "enum": [
+              "product",
+              "policy",
+              "order"
+            ],
+            "title": "Domain",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "unit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Unit Id"
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Asset Id"
+          },
+          "element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Element Id"
+          },
+          "source_id": {
+            "default": "",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "authority": {
+            "title": "Authority",
+            "type": "string"
+          },
+          "evidence_type": {
+            "title": "Evidence Type",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "facts": {
+            "additionalProperties": true,
+            "title": "Facts",
+            "type": "object"
+          },
+          "location": {
+            "additionalProperties": true,
+            "title": "Location",
+            "type": "object"
+          },
+          "validated": {
+            "default": false,
+            "title": "Validated",
+            "type": "boolean"
+          },
+          "snapshot": {
+            "default": "",
+            "title": "Snapshot",
+            "type": "string"
+          },
+          "policy_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PolicyApplicability"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "evidence_id",
+          "kind",
+          "domain",
+          "target_id",
+          "version",
+          "authority",
+          "evidence_type",
+          "text"
+        ],
+        "title": "EvidenceRef",
+        "type": "object"
+      },
+      "PolicyApplicability": {
+        "additionalProperties": false,
+        "properties": {
+          "doc_id": {
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "policy_id": {
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "jurisdiction": {
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "audience": {
+            "title": "Audience",
+            "type": "string"
+          },
+          "category_scope": {
+            "title": "Category Scope",
+            "type": "string"
+          },
+          "effective_from": {
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "title": "Effective To",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_id",
+          "policy_id",
+          "topic",
+          "platform",
+          "jurisdiction",
+          "audience",
+          "category_scope",
+          "effective_from",
+          "effective_to",
+          "status",
+          "priority"
+        ],
+        "title": "PolicyApplicability",
+        "type": "object"
+      },
+      "RequiredAspect": {
+        "additionalProperties": false,
+        "properties": {
+          "aspect": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Aspect",
+            "type": "string"
+          },
+          "domain": {
+            "enum": [
+              "product",
+              "policy",
+              "order"
+            ],
+            "title": "Domain",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Field"
+          },
+          "purpose": {
+            "default": "fact",
+            "enum": [
+              "fact",
+              "technical",
+              "rights"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "aspect",
+          "domain",
+          "target_id"
+        ],
+        "title": "RequiredAspect",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "task_id": {
+        "title": "Task Id",
+        "type": "string"
+      },
+      "question": {
+        "title": "Question",
+        "type": "string"
+      },
+      "domains": {
+        "items": {
+          "enum": [
+            "product",
+            "policy",
+            "order"
+          ],
+          "type": "string"
+        },
+        "title": "Domains",
+        "type": "array"
+      },
+      "evidence": {
+        "items": {
+          "$ref": "#/$defs/EvidenceRef"
+        },
+        "title": "Evidence",
+        "type": "array"
+      },
+      "aspects": {
+        "items": {
+          "$ref": "#/$defs/RequiredAspect"
+        },
+        "title": "Aspects",
+        "type": "array"
+      },
+      "business_context": {
+        "additionalProperties": true,
+        "title": "Business Context",
+        "type": "object"
+      },
+      "hard_constraints": {
+        "additionalProperties": true,
+        "title": "Hard Constraints",
+        "type": "object"
+      },
+      "retrieval_scope": {
+        "additionalProperties": true,
+        "title": "Retrieval Scope",
+        "type": "object"
+      }
+    },
+    "required": [
+      "task_id",
+      "question",
+      "domains",
+      "evidence",
+      "aspects"
+    ],
+    "title": "EvidenceBundle",
+    "type": "object"
+  },
+  "EvidenceAssessment": {
+    "$defs": {
+      "AspectAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "aspect": {
+            "title": "Aspect",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "supported",
+              "partially_supported",
+              "unsupported",
+              "conflicted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supporting_evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 24,
+            "title": "Supporting Evidence Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "aspect",
+          "target_id",
+          "required",
+          "status"
+        ],
+        "title": "AspectAssessment",
+        "type": "object"
+      },
+      "FollowupQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "aspect": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Aspect",
+            "type": "string"
+          },
+          "domain": {
+            "enum": [
+              "product",
+              "policy",
+              "order"
+            ],
+            "title": "Domain",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "aspect",
+          "domain",
+          "target_id",
+          "query"
+        ],
+        "title": "FollowupQuery",
+        "type": "object"
+      },
+      "VisualObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          },
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "snapshot": {
+            "title": "Snapshot",
+            "type": "string"
+          },
+          "observation": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Observation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "unit_id",
+          "asset_id",
+          "target_id",
+          "version",
+          "snapshot",
+          "observation"
+        ],
+        "title": "VisualObservation",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "next_action": {
+        "enum": [
+          "answer",
+          "retrieve_more",
+          "ask_user",
+          "refuse"
+        ],
+        "title": "Next Action",
+        "type": "string"
+      },
+      "coverage": {
+        "enum": [
+          "complete",
+          "qualified",
+          "insufficient"
+        ],
+        "title": "Coverage",
+        "type": "string"
+      },
+      "conflict": {
+        "title": "Conflict",
+        "type": "boolean"
+      },
+      "reason": {
+        "maxLength": 500,
+        "minLength": 1,
+        "title": "Reason",
+        "type": "string"
+      },
+      "aspects": {
+        "items": {
+          "$ref": "#/$defs/AspectAssessment"
+        },
+        "maxItems": 32,
+        "title": "Aspects",
+        "type": "array"
+      },
+      "required_user_fields": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 8,
+        "title": "Required User Fields",
+        "type": "array"
+      },
+      "clarification_question": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Clarification Question"
+      },
+      "suggested_queries": {
+        "items": {
+          "$ref": "#/$defs/FollowupQuery"
+        },
+        "maxItems": 4,
+        "title": "Suggested Queries",
+        "type": "array"
+      },
+      "visual_observations": {
+        "items": {
+          "$ref": "#/$defs/VisualObservation"
+        },
+        "maxItems": 5,
+        "title": "Visual Observations",
+        "type": "array"
+      },
+      "allowed_evidence_ids": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 32,
+        "title": "Allowed Evidence Ids",
+        "type": "array"
+      },
+      "unconfirmed_conditions": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "title": "Unconfirmed Conditions",
+        "type": "array"
+      }
+    },
+    "required": [
+      "next_action",
+      "coverage",
+      "conflict",
+      "reason",
+      "aspects"
+    ],
+    "title": "EvidenceAssessment",
+    "type": "object"
+  }
+}

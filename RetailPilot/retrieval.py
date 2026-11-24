@@ -512,6 +512,7 @@ def _score_candidates(
         if row is None:
             continue
         product = hydrate_product(row)
+        product["evidence_assessment"] = row.get("evidence_assessment")
         product["knowledge_evidence"] = row.get("knowledge_evidence", [])
         product["visual_observation"] = row.get("visual_observation", "")
         product["asset_evidence"] = row.get("asset_evidence", [])
@@ -843,6 +844,7 @@ class SearchEngine:
             hit.unit_id: hit for hit in unit_routes.get("knowledge_visual", [])
         }
         grouped = {sku: group for sku, group in grouped.items() if sku in pool_by_sku}
+        from .evidence_runtime import mode as evidence_mode, evaluate_products
         anchors = {}
         verify_calls = 0
         with db_session() as evidence_db:
@@ -879,6 +881,9 @@ class SearchEngine:
                         continue
                     package = hydrate(hit.unit_id)
                     # A caption-free visual candidate requires original-image verification.
+                    if evidence_mode()=="unified":
+                        visual_anchor = True  # provisional relevance only; workflow verifies original image
+                        break
                     if package and verify_calls < asset_settings.verification_images:
                         verify_calls += 1
                         observation = verify_image(package, parsed.raw_query)
@@ -946,6 +951,10 @@ class SearchEngine:
             candidates = _products_for_skus(_structured_skus(parsed, limit=100))
             pool_by_sku = {row["sku"]: row for row in candidates if row["stock"] > 0}
             grouped = {sku: {"score": 1.0, "hits": []} for sku in pool_by_sku}
+        checked, evidence_trace = evaluate_products(parsed.raw_query,list(pool_by_sku.values()),parsed=parsed,task_id=request_id)
+        trace.extend(evidence_trace)
+        pool_by_sku = {p["sku"]:p for p in checked}
+        grouped = {sku:g for sku,g in grouped.items() if sku in pool_by_sku}
         candidate_skus = list(grouped)
         stage_timings["knowledge_retrieval"] = knowledge_trace["latency_ms"]
         trace.append(

@@ -32,3 +32,11 @@ test("raw upload preserves content type and CSRF", async () => {
     headers: {"Content-Type": "image/png"}});
   assert.equal(payload.status, "queued");
 });
+
+test("assessment limits escape model text", async () => {
+  const { evidenceAssessmentCard } = await import("../../web/assets/assets.js");
+  const html = evidenceAssessmentCard({ coverage: "qualified", reason: "<script>bad</script>", unconfirmed_conditions: ["<img src=x>"] });
+  assert.match(html, /有条件支持/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.ok(!html.includes("<img"));
+});

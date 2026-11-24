@@ -64,6 +64,10 @@ def _add_asset_answer(payload, claims, query):
     if not asset_settings.enabled:
         return
     evidence = product_asset_answer(query, payload.get('products') or [])
+    for product in payload.get('products') or []:
+        assessment=product.get('evidence_assessment') or {}
+        if assessment.get('coverage')=='qualified':
+            payload['response']+='\n未确认条件：'+'；'.join(assessment.get('unconfirmed_conditions') or [])
     if evidence['lines']:
         payload['response'] += '\n' + '\n'.join(evidence['lines'])
     elif evidence['needed_visual']:
@@ -76,7 +80,8 @@ def _add_asset_answer(payload, claims, query):
 
 def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
     task = state["active_task"]
-    asset_question = asset_settings.enabled and requires_asset(task['text'])
+    from ..evidence_runtime import mode as evidence_mode
+    asset_question = (asset_settings.enabled and requires_asset(task['text'])) or evidence_mode()=="unified"
     skill_context = runtime.context_for_skill(state.get("context") or {}, "pre_sales")
     intent_category = task.get("category")
     intent_terms = [t for t in (task.get("target_terms") or []) if t][:12]
@@ -162,6 +167,8 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
         candidates = re.findall(r'(?<![A-Za-z0-9_-])[A-Za-z0-9][A-Za-z0-9_-]{2,79}(?![A-Za-z0-9_-])', task['text'])
         parsed.reference_skus = [product['sku'] for product in get_products(candidates[:12])]
 
+    from ..evidence_runtime import evaluate_products
+
     if task["intent"] == "detail":
         # 用户指代"第一款/它/这个"时不走本地序数词规则，直接从会话状态取
         # 聚焦/上轮结果 SKU 由售前分支结合 session context 解析；路由层不
@@ -202,6 +209,11 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
                 },
             }
         else:
+            products, evidence_trace = evaluate_products(task["text"],products,parsed=parsed,task_id=str(task.get("task_id") or "detail"))
+            if not products:
+                return {"branch_outputs":[{**runtime._task_fields(task),"branch":"pre_sales","intent":"detail",
+                    "response":"现有证据不足或存在冲突，无法确认所问商品细节。","products":[],"citations":[],"claims":[],
+                    "grounding":{"pass":True,"claims":0,"issues":[]}}],"trace":evidence_trace}
             product = products[0]
             feature_text = (
                 "；".join(product["features"][:4]) or product["description"][:240]
@@ -293,6 +305,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
         products = [
             item["data"] for item in detail_results if item["ok"] and item.get("data")
         ]
+        products, evidence_trace = evaluate_products(task["text"],products,parsed=parsed,task_id=str(task.get("task_id") or "compare"))
         comparison = {
             "products": products,
             "fields": ["price", "rating", "stock", "features", "attributes"],
@@ -425,7 +438,7 @@ def pre_sales_branch(state: runtime.AgentState) -> dict[str, runtime.Any]:
         )
         compose_products = products[:3]
         # Discovery descriptions never enter the free-form reply composer.
-        compose_data = [{key: value for key, value in product.items() if key not in {'asset_evidence','knowledge_evidence'}}
+        compose_data = [{key: value for key, value in product.items() if key not in {'asset_evidence','knowledge_evidence','evidence_assessment'}}
                         for product in compose_products]
         note = (relaxation_note + preferred_note).strip()
         response = (None if asset_question else runtime.compose_reply(

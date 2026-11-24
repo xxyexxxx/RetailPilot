@@ -275,3 +275,11 @@ Copy-Item config\github-workflows\low-risk-automerge.yml.example .github\workflo
 已有库先运行 `python scripts/knowledge.py migrate --backup data/before-unified.db`，再启动服务。
 完整导入、构建、切换、回滚和实测结果见 [统一知识检索报告](docs/unified-knowledge.md)。
 售前、售后与原始图片/表格的源码执行过程见 [端到端调用链](docs/unified-knowledge-call-chains.md)。
+
+## 统一多模态证据决策与模型网关
+
+本轮新增请求级 EvidenceBundle、共同评估/补检执行器和生成式模型 Gateway。
+默认保留 legacy，可先配置模型并运行 `python scripts/probe_reasoning.py --output data/reasoning-capabilities.json`，
+再评估 shadow/unified。完整配置、测试、回滚与真实测量边界见
+[统一证据升级报告](docs/unified-evidence.md)；面试阅读见
+[端到端源码说明](docs/unified-evidence-call-chains.md)。
