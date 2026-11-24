@@ -115,3 +115,10 @@ export function bindAssetsPanel() {
     }, (error) => { status.textContent = error.message; });
   });
 }
+
+export function evidenceAssessmentCard(value) {
+  if (!value) return "";
+  const coverage = { complete: "证据完整", qualified: "有条件支持", insufficient: "证据不足" }[value.coverage] || "证据评估";
+  const conditions = (value.unconfirmed_conditions || []).map((item) => `<li>${escape(item)}</li>`).join("");
+  return `<details class="asset-evidence"><summary>${escape(coverage)}</summary><p>${escape(value.reason)}</p>${conditions ? `<p>未确认条件</p><ul>${conditions}</ul>` : ""}</details>`;
+}

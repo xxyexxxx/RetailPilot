@@ -117,6 +117,9 @@ def _summarize_trace(trace: Any) -> Any:
                 "evidence_count",
                 "assessment_calls",
                 "extra_retrieval_calls",
+                "vision_input_count",
+                "llm_calls",
+                "llm_tokens",
             )
             if isinstance(item.get(key), int)
         }
@@ -146,6 +149,7 @@ def _redact_public_payload(payload: Any) -> Any:
 
     value = deepcopy(payload)
     if isinstance(value, dict):
+        product_assessment=value.get("evidence_assessment") if value.get("sku") and value.get("title") else None
         for key in (
             "context",
             "context_budget",
@@ -161,6 +165,8 @@ def _redact_public_payload(payload: Any) -> Any:
             "faithfulness",
         ):
             value.pop(key, None)
+        if isinstance(product_assessment,dict) and product_assessment.get("coverage") in {"complete","qualified","insufficient"}:
+            value["evidence_assessment"]={k:product_assessment[k] for k in ("next_action","coverage","reason","unconfirmed_conditions") if k in product_assessment}
         if "trace" in value:
             value["trace_summary"] = _summarize_trace(value.pop("trace"))
         for key, nested in list(value.items()):

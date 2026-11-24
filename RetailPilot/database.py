@@ -300,6 +300,7 @@ CREATE TABLE IF NOT EXISTS llm_usage_logs (
     cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
     latency_ms REAL NOT NULL DEFAULT 0,
     retry_count INTEGER NOT NULL DEFAULT 0,
+    image_count INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'success',
     error_type TEXT NOT NULL DEFAULT '',
     estimated_cost REAL,
@@ -402,6 +403,8 @@ def init_db(path: Path | str | None = None) -> None:
             )
         connection.execute("""CREATE TABLE IF NOT EXISTS web_sessions (
             token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, csrf_token TEXT NOT NULL, expires_at REAL NOT NULL)""")
+        if not any(row['name']=='image_count' for row in connection.execute('PRAGMA table_info(llm_usage_logs)')):
+            connection.execute('ALTER TABLE llm_usage_logs ADD COLUMN image_count INTEGER NOT NULL DEFAULT 0')
         _migrate_faq_documents(connection)
         from .knowledge import migrate, sync_products
         migrate(connection)
@@ -483,8 +486,8 @@ def record_llm_usage(payload: dict[str, Any]) -> None:
                 prompt_kind, prompt_version, provider, model,
                 input_tokens, output_tokens, total_tokens, cached_tokens,
                 cache_creation_tokens, cache_miss_tokens, latency_ms,
-                retry_count, status, error_type, estimated_cost
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                retry_count, image_count, status, error_type, estimated_cost
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(payload.get("prompt_kind") or "unknown"),
@@ -499,6 +502,7 @@ def record_llm_usage(payload: dict[str, Any]) -> None:
                 int(payload.get("cache_miss_tokens") or 0),
                 float(payload.get("latency_ms") or 0),
                 int(payload.get("retry_count") or 0),
+                int(payload.get("image_count") or 0),
                 str(payload.get("status") or "success"),
                 str(payload.get("error_type") or ""),
                 (

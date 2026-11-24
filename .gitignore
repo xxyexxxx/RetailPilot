@@ -39,3 +39,4 @@ artifacts/v1_v4_verification.json
 _tmp_*.py
 *.log
 .codebuddy/
+/data/reasoning-capabilities.json

@@ -52,6 +52,9 @@ class PolicyProductContext(BaseModel):
 
 
 class PolicyRetrieveInput(BaseModel):
+    jurisdiction: str = "*"
+    authority: str | None = None
+    version: str | None = None
     as_of: date | None = None
     query: str = Field(min_length=1, max_length=500)
     topic: PolicyTopic
@@ -166,6 +169,7 @@ class ToolRegistry:
                             spec.timeout_ms, (deadline - time.perf_counter()) * 1000
                         )
                     )
+                    caller_budget_limited = deadline is not None and remaining_ms < spec.timeout_ms
                     if remaining_ms <= 0:
                         raise _ToolTimeoutError("tool deadline exhausted")
                     data, observation = self._invoke(
@@ -174,7 +178,7 @@ class ToolRegistry:
                     break
                 except _ToolTimeoutError:
                     timed_out = True
-                    if attempts >= max_attempts or (
+                    if caller_budget_limited or attempts >= max_attempts or (
                         deadline is not None and time.perf_counter() >= deadline
                     ):
                         raise
@@ -313,6 +317,9 @@ def policy_retrieve(
     product_context: dict[str, Any] | None = None,
     limit: int = 4,
     as_of: date | None = None,
+    jurisdiction: str = "*",
+    authority: str | None = None,
+    version: str | None = None,
 ) -> dict[str, Any]:
     return retrieve_policies(
         query,
@@ -321,6 +328,7 @@ def policy_retrieve(
         as_of=as_of,
         topic=topic,
         limit=limit,
+        jurisdiction=jurisdiction,authority=authority,version=version,
     )
 
 

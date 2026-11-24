@@ -129,18 +129,22 @@ def test_agent_model_disables_thinking_and_exposes_secret_free_status(monkeypatc
     monkeypatch.setenv("LLM_THINKING", "false")
     captured = {}
 
-    class FakeChatOpenAI:
-        def __init__(self, **kwargs):
-            captured.update(kwargs)
-
-    monkeypatch.setattr(llm_config, "ChatOpenAI", FakeChatOpenAI)
-
-    get_model(temperature=0, max_tokens=321)
+    class Response:
+        status_code = 200
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+        def json(self):
+            return {"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}
+    def post(_url, **kwargs):
+        captured.update(kwargs["json"])
+        return Response()
+    monkeypatch.setattr("RetailPilot.multimodal_model.requests.post", post)
+    get_model(temperature=0, max_tokens=321).invoke("probe")
     status = agent_model_status()
 
     assert captured["model"] == "qwen3.5-flash"
     assert captured["max_tokens"] == 321
-    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert captured["thinking"] == {"type": "disabled"}
     assert status == {
         "configured": True,
         "model": "qwen3.5-flash",

@@ -1,0 +1,55 @@
+{
+  "baseline_ref": "1d57ff4",
+  "baseline": {
+    "passed": 262,
+    "failed": 6,
+    "failures": [
+      "tests/test_api.py::test_api_smoke",
+      "tests/test_evaluation_pipeline.py::test_low_candidate_policy_relaxes_before_zero_results",
+      "tests/test_evaluation_pipeline.py::test_search_logging_persists_routes_impressions_and_sample",
+      "tests/test_retrieval.py::test_hybrid_search_respects_budget_and_negative_brand",
+      "tests/test_retrieval.py::test_search_uses_controlled_attribute_relaxation_when_strict_pool_is_empty",
+      "tests/test_retrieval.py::test_approximate_budget_keeps_nearby_exact_catalog_match"
+    ]
+  },
+  "current": {
+    "passed": 287,
+    "failed": 6,
+    "failures": [
+      "tests/test_api.py::test_api_smoke",
+      "tests/test_evaluation_pipeline.py::test_low_candidate_policy_relaxes_before_zero_results",
+      "tests/test_evaluation_pipeline.py::test_search_logging_persists_routes_impressions_and_sample",
+      "tests/test_retrieval.py::test_hybrid_search_respects_budget_and_negative_brand",
+      "tests/test_retrieval.py::test_search_uses_controlled_attribute_relaxation_when_strict_pool_is_empty",
+      "tests/test_retrieval.py::test_approximate_budget_keeps_nearby_exact_catalog_match"
+    ],
+    "new_failures": []
+  },
+  "frontend": {
+    "passed": 9,
+    "failed": 0
+  },
+  "migration": {
+    "before": {
+      "products": 4203,
+      "policy_documents": 6,
+      "knowledge_units": 4209
+    },
+    "after": {
+      "products": 4203,
+      "policy_documents": 6,
+      "knowledge_units": 4209
+    },
+    "foreign_keys": [],
+    "image_count_column": true,
+    "runtime": {
+      "mode": "legacy",
+      "configured": false,
+      "declared_vision": false,
+      "verified_vision_ready": false
+    }
+  },
+  "real_vlm_tested": false,
+  "human_evaluation": false,
+  "mock_test_scope": "strict schema, source/ownership constraints, adaptive controller, real image wire format, API, model usage telemetry, constrained cross-domain retrieval"
+}

@@ -1,5 +1,7 @@
 # Unified Knowledge Retrieval with Modality-Aware Indexing
 
+当前证据决策与生成式模型基础设施已进一步升级，见[统一证据报告](unified-evidence.md)和[源码调用链](unified-evidence-call-chains.md)。以下知识层说明及历史测量保留其阶段语境。
+
 实施日期：2026-11-23。审查基线：GitHub main 的 `a18faa1`。本次默认运行路径已切换到统一知识检索。
 
 完整面试阅读指南见 [端到端代码调用链](unified-knowledge-call-chains.md)。实际测量见 [Benchmark JSON](unified-knowledge-benchmark.json)、[Shadow JSON](unified-knowledge-shadow.json)、[迁移与测试 JSON](unified-knowledge-validation.json)。

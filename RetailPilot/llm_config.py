@@ -24,15 +24,8 @@ try:
 except ImportError:
     pass
 
-try:
-    from langchain_deepseek import ChatDeepSeek
-    _HAS_DEEPSEEK = True
-except ImportError:
-    _HAS_DEEPSEEK = False
 
-from langchain_openai import ChatOpenAI
 
-from .execution import call_deadline
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,7 +49,12 @@ class PolicyCallBudget:
         if time.perf_counter() >= self.deadline:
             raise TimeoutError("policy deadline")
         messages = prompt if isinstance(prompt, (list, tuple)) else [prompt]
-        size = sum(len(str(getattr(item, "content", item)).encode("utf-8")) + 128 for item in messages)
+        def envelope(item):
+            content = getattr(item, "content", item)
+            if isinstance(content,dict) and isinstance(content.get("content"),list):
+                return sum(8192 if part.get("type")=="image_url" else len(str(part).encode("utf-8")) for part in content["content"])+128
+            return len(str(content).encode("utf-8"))+128
+        size = sum(envelope(item) for item in messages)
         reservation = size + output_cap
         if self.reserved_tokens + reservation > self.token_limit:
             raise PolicyBudgetExceeded("policy_llm_token_budget")
@@ -162,11 +160,12 @@ def judge_config_status() -> dict[str, Any]:
 def agent_model_status() -> dict[str, Any]:
     """Return the runtime Agent model configuration without credentials."""
 
-    base_url = (os.getenv("LLM_BASE_URL") or "https://api.openai.com/v1").strip()
-    parsed = urlparse(base_url)
+    from .multimodal_model import config
+    active=config()
+    parsed = urlparse(active.base_url)
     return {
-        "configured": bool(os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")),
-        "model": os.getenv("LLM_MODEL", "gpt-4o-mini").strip(),
+        "configured": active.enabled,
+        "model": active.model,
         "endpoint_host": parsed.netloc or parsed.path.split("/")[0],
         "thinking_enabled": _env_bool("LLM_THINKING", False),
     }
@@ -510,17 +509,23 @@ def invoke_with_telemetry(
     specific prefix revision.
     """
 
+    if hasattr(model, "task_type"):
+        model.task_type = prompt_kind
     budget = policy_call_budget.get()
     if budget is not None:
-        budget.reserve(prompt, agent_max_tokens(prompt_kind))
+        budget.reserve(prompt, getattr(model,"max_tokens",None) or agent_max_tokens(prompt_kind))
     started = time.perf_counter()
     base_url = (os.getenv("LLM_BASE_URL") or "https://api.openai.com/v1").strip()
     parsed = urlparse(base_url)
+    from .multimodal_model import config as model_config
+    active = model_config(prompt_kind)
+    parsed = urlparse(active.base_url)
     common = {
         "prompt_kind": prompt_kind,
         "prompt_version": prompt_version,
         "provider": parsed.netloc or parsed.path.split("/")[0],
-        "model": os.getenv("LLM_MODEL", "gpt-4o-mini").strip(),
+        "model": active.model,
+        "image_count": getattr(model,"image_count",0),
         "retry_count": 0,
     }
 
@@ -563,67 +568,7 @@ def invoke_with_telemetry(
     return response
 
 
-def get_model(
-    temperature: float = 0.7,
-    *,
-    json_mode: bool = False,
-    max_tokens: int | None = None,
-):
-    """返回 LLM 实例。
-
-    DeepSeek 官方 API 用 ChatDeepSeek，其余 OpenAI 兼容接口用 ChatOpenAI。
-    json_mode=True 时通过 OpenAI 兼容的 response_format 强制 JSON Object 输出
-    （保证合法 JSON，不保证字段结构），仅建议对 prompt 明确要求 JSON 的调用点开启，
-    如意图分析/查询归一；模型不支持时（会 400）由调用方捕获并回退。
-    注意 thinking 模式的一个硬约束：带 tool_calls 的 assistant 消息回传时必须附
-    reasoning_content，否则 400（The reasoning_content ... must be passed back）。
-    实测确认 langchain-openai 与 langchain-deepseek 1.1.0 序列化时都会丢弃该字段，
-    真正保证回传的是 agent.py 头部的 monkey-patch（_convert_message_to_dict 注入
-    reasoning_content）；这里用官方类仅保证 DeepSeek 官方接口的接入兼容性。
-    """
-    api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "未配置 LLM_API_KEY。请复制 .env.example 为 .env 并填入你的 API Key。"
-        )
-    base_url = os.getenv("LLM_BASE_URL")
-    model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
-    timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "20"))
-    max_retries = int(os.getenv("LLM_MAX_RETRIES", "1"))
-    budget = policy_call_budget.get()
-    if budget is not None:
-        timeout = max(0.01, min(timeout, budget.deadline - time.perf_counter()))
-        max_retries = 0
-    deadline = call_deadline.get()
-    if deadline is not None:
-        timeout = max(0.01, min(timeout, deadline - time.perf_counter()))
-        max_retries = 0
-    thinking = _env_bool("LLM_THINKING", False)
-    if _HAS_DEEPSEEK and base_url and "deepseek" in base_url.lower():
-        kwargs: dict[str, Any] = {
-            "model": model_name,
-            "api_key": api_key,
-            "temperature": temperature,
-            "timeout": timeout,
-            "max_retries": max_retries,
-        }
-        if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
-        return ChatDeepSeek(
-            **kwargs,
-        )
-    kwargs: dict[str, Any] = {
-        "model": model_name,
-        "api_key": api_key,
-        "base_url": base_url,
-        "temperature": temperature,
-        "timeout": timeout,
-        "max_retries": max_retries,
-    }
-    if json_mode:
-        kwargs["model_kwargs"] = {"response_format": {"type": "json_object"}}
-    if max_tokens is not None:
-        kwargs["max_tokens"] = max_tokens
-    return ChatOpenAI(**kwargs, extra_body={
-        "thinking": {"type": "enabled" if thinking else "disabled"}
-    })
+def get_model(temperature: float = 0.7, *, json_mode: bool = False, max_tokens: int | None = None, output_schema=None):
+    """Compatibility facade for the single generative gateway transport."""
+    from .multimodal_model import GatewayModel
+    return GatewayModel(temperature=temperature, json_mode=json_mode, max_tokens=max_tokens, schema=output_schema)

@@ -1,7 +1,7 @@
 import { api, streamChat, setCsrfToken, LatestRequest, withButton } from "./client.js";
 import { loadSession, newSession } from "./session.js";
 
-import { assetEvidenceCard, assetCitations, assetGallery, configureAssetsPanel, bindAssetsPanel } from "./assets.js";
+import { evidenceAssessmentCard, assetEvidenceCard, assetCitations, assetGallery, configureAssetsPanel, bindAssetsPanel } from "./assets.js";
 
 const chatRequest = new LatestRequest();
 const searchRequest = new LatestRequest();
@@ -147,6 +147,7 @@ function productCard(product, compact = false) {
         </div>
         <p class="product-reason">${escapeHtml(product.reason || product.features?.[0] || "")}</p>
         ${assetEvidenceCard(product.asset_evidence?.[0])}
+        ${evidenceAssessmentCard(product.evidence_assessment)}
         ${compact ? "" : scoreRow("相关性", score.term_match ?? product.score)}
         ${compact ? "" : scoreRow("个性化", (Number(score.personalization || 0) + 1) / 2)}
         <div class="product-actions">

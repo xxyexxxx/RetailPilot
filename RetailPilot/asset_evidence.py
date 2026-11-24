@@ -20,7 +20,7 @@ _VISUAL_QUESTION = re.compile(
     re.IGNORECASE,
 )
 _POLICY_RIGHTS = re.compile(
-    r"退款|退货|换货|赔偿|金额|有效期|期限|几天|政策|义务|返还|保修多长|refund|return policy|days",
+    r"退款|退货|换货|赔偿|赔付|金额|费用|收费|有效期|期限|几天|政策|义务|返还|保修|refund|warranty|return policy|days|eligibility",
     re.IGNORECASE,
 )
 
@@ -61,7 +61,8 @@ def requires_asset(query: str) -> bool:
 
 
 def verify_image(package: EvidencePackage, query: str) -> str:
-    if not package.source_location.get("preview_url") or not config.vlm_model:
+    from .multimodal_model import ready_for_vision
+    if not package.source_location.get("preview_url") or not ready_for_vision():
         return ""
     from .asset_parsing import VisionProvider
 
@@ -226,6 +227,14 @@ def product_asset_answer(query: str, products: list[dict]) -> dict:
                 "" if is_image and spatial else _extract(query, package.text_content)
             )
             verified = False
+            from .evidence_runtime import mode as evidence_mode
+            if evidence_mode()=="unified":
+                from .evidence_policies import knowledge_ref
+                live=knowledge_ref(package.unit_id)
+                observations=(product.get("evidence_assessment") or {}).get("visual_observations",[])
+                observation=next((o for o in observations if live and o["evidence_id"]==live.evidence_id and o["snapshot"]==live.snapshot and o["version"]==live.version),None)
+                if observation:
+                    value=observation["observation"];verified=True
             image_key = (
                 package.asset_id,
                 package.source_location["page_no"],
@@ -233,6 +242,7 @@ def product_asset_answer(query: str, products: list[dict]) -> dict:
             )
             if (
                 is_image
+                and evidence_mode()!="unified"
                 and not value
                 and needs_vision
                 and config.vlm_model

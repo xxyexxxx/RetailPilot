@@ -313,6 +313,8 @@ def test_visual_verification_real_image_transport_and_refusal(mm, monkeypatch):
         def __exit__(self, *_):
             pass
 
+        status_code = 200
+
         def raise_for_status(self):
             pass
 
@@ -331,15 +333,14 @@ def test_visual_verification_real_image_transport_and_refusal(mm, monkeypatch):
         request_log.append(kwargs["json"])
         return Response()
 
-    monkeypatch.setattr("RetailPilot.asset_parsing.requests.post", fake_post)
+    monkeypatch.setattr("RetailPilot.multimodal_model.requests.post", fake_post)
     answer = product_asset_answer(
         "风扇示意图的接头在哪一侧？", [get_product("mm-pack")]
     )
     assert "接头在右侧" in answer["lines"][0]
     assert answer["citations"][0]["verification_status"] == "image_verified"
-    assert request_log[0]["messages"][1]["content"][1]["image_url"]["url"].startswith(
-        "data:image/png;base64,"
-    )
+    parts = [part for message in request_log[0]["messages"] if isinstance(message["content"], list) for part in message["content"]]
+    assert any(part.get("image_url",{}).get("url","").startswith("data:image/png;base64,") for part in parts)
     monkeypatch.setattr(config, "vlm_url", "")
     answer = product_asset_answer(
         "风扇示意图的接头在哪一侧？", [get_product("mm-pack")]
@@ -464,6 +465,7 @@ def test_structured_table_and_context_plus_visual_policy(mm, monkeypatch):
     assert policy_asset_evidence(figure, "蓝色状态灯流程图", budget) is None
     budget["observations"].clear()
     monkeypatch.setattr(config, "vlm_model", "fixture")
+    monkeypatch.setattr(config, "vlm_url", "http://vision.fixture/v1")
     monkeypatch.setattr(VisionProvider, "verify", lambda *args: "绿灯分支指向继续安装")
     reviewed = policy_asset_evidence(figure, "蓝色状态灯流程图", budget)
     assert reviewed["content"].startswith("图示观察")
